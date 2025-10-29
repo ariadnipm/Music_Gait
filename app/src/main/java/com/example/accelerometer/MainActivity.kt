@@ -12,18 +12,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.accelerometer.ui.theme.AccelerometerTheme
-
+import  dagger.hilt.android.AndroidEntryPoint
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        init {
+            System.loadLibrary("accelerometer")
+        }
+    }
+    private external fun stringFromJNI(): String
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             AccelerometerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
+                    Text(
+                        text = stringFromJNI(),
                         modifier = Modifier.padding(innerPadding)
                     )
+
+
                 }
             }
         }
