@@ -13,15 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.accelerometer.ui.theme.AccelerometerTheme
 import  dagger.hilt.android.AndroidEntryPoint
+import androidx.activity.viewModels
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        init {
-            System.loadLibrary("accelerometer")
-        }
-    }
-    private external fun stringFromJNI(): String
+    private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,14 +27,22 @@ class MainActivity : ComponentActivity() {
             AccelerometerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Text(
-                        text = stringFromJNI(),
+                        text = "ax: ${viewModel.ax}, ay: ${viewModel.ay}, az: ${viewModel.az}, time: ${viewModel.tMs}",
                         modifier = Modifier.padding(innerPadding)
                     )
-
-
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.startListeningSensor()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.stopListeningSensor()
     }
 }
 
