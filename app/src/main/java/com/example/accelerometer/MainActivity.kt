@@ -27,7 +27,10 @@ class MainActivity : ComponentActivity() {
             AccelerometerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Text(
-                        text = "ax: ${viewModel.ax}, ay: ${viewModel.ay}, az: ${viewModel.az}, time: ${viewModel.tMs}",
+                        text = "ax: ${viewModel.ax}, ay: ${viewModel.ay}, az: ${viewModel.az}\n" +
+                                "epoch(ms): ${viewModel.tMs}\n" +
+                                "epoch(s): ${"%.3f".format(viewModel.tMs.toSecondsSinceEpoch())}\n" +
+                                "local time: ${viewModel.tMs.toDateTimeString()}",
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
