@@ -1,27 +1,25 @@
 package com.example.accelerometer
 
+import android.util.Log
 import kotlin.math.ceil
 import kotlin.math.max
 
 /**
  * High-precision time-based sliding window using a ring buffer.
  *
- * Features:
- *  - Warm-up phase: emits minEmitMs (e.g., 3s) windows until total span reaches windowMs (e.g., 6s)
- *  - After warm-up, emits fixed windows of windowMs every hopMs (e.g., 1s)
- *  - Quantized hop grid: perfectly aligned 1s hops with jitter ≈ ±1 sample
- *  - O(1) insert/remove, zero allocations after initialization
- *
- * Give timestamps in milliseconds (monotonic), e.g. event.timestamp / 1e6
+ * Internal time: MONOTONIC ms (event.timestamp / 1e6).
+ * Warm-up: emits 3 s windows until total span >= 6 s.
+ * Full: emits 6 s windows every 1 s (grid-locked, no drift).
+ * O(1) insert/remove, zero allocations after init.
  */
 class SlidingWindow(
-    private val windowMs: Long = 6_000L,
-    private val hopMs: Long = 1_000L,
-    private val minEmitMs: Long = 3_000L,
+    private val windowMs: Long = 6_000L,   // πλήρες παράθυρο
+    private val hopMs: Long = 1_000L,      // βήμα emit
+    private val minEmitMs: Long = 3_000L,  // warm-up μέγεθος
     maxHz: Double = 100.0,
     headroomFactor: Double = 1.3
 ) {
-    // ---- Ring buffer storage ----
+    // ---- ring buffer ----
     private val cap: Int = run {
         val basis = max(windowMs, minEmitMs)
         val capEst = ceil((basis / 1000.0) * maxHz * headroomFactor).toInt()
@@ -35,94 +33,133 @@ class SlidingWindow(
     private var head = 0
     private var size = 0
 
-    // ---- Timing & state tracking ----
+    // ---- timing ----
     private var firstSeenMs: Long? = null
-    private var reachedFull = false
-    private var justSwitchedToFull = false
+    private var gridAnchorMs: Long? = null   // αφετηρία πλέγματος (πληροφοριακό)
+    private var nextEdgeMs: Long? = null     // επόμενο emit πάνω στο πλέγμα
 
-    // Grid anchor and next emit edge
-    private var gridAnchorMs: Long? = null
-    private var nextEdgeMs: Long? = null
+    /** 3s στο warm-up, 6s μετά. Κάλεσέ το τη στιγμή του emit. */
+    fun targetSpanMs(now: Long): Long {
+        val full = (firstSeenMs != null) && ((now - firstSeenMs!!) >= windowMs)
+        return if (full) windowMs else minEmitMs
+    }
 
-    /**
-     * Push a new sample (tMs in ms). Returns true when it's time to emit a new window.
-     */
+    /** Push νέου δείγματος (tMs = MONOTONIC ms). Επιστρέφει true όταν πρέπει να γίνει emit. */
     fun push(tMs: Long, x: Float, y: Float, z: Float): Boolean {
         if (firstSeenMs == null) firstSeenMs = tMs
         append(tMs, x, y, z)
 
-        // Detect transition from warm-up to full window
-        if (!reachedFull && (tMs - firstSeenMs!!) >= windowMs) {
-            reachedFull = true
-            justSwitchedToFull = true
-        }
-
-        // Target window duration: 3s warm-up, 6s after
-        val targetSpanMs = if (reachedFull && !justSwitchedToFull) windowMs else minEmitMs
-
-        // Drop old samples outside active window
-        val cutoff = tMs - targetSpanMs
+        // Κρατάμε ΠΑΝΤΑ ≤ windowMs ιστορία (προβλέψιμο state)
+        val cutoff = tMs - windowMs
         while (size > 0 && firstTimeMs() < cutoff) popOldest()
 
-        val span = if (size <= 1) 0L else lastTimeMs() - firstTimeMs()
-        if (span < targetSpanMs) return false // not enough data yet
+        // Για να επιτρέψουμε emit θέλουμε τουλάχιστον minEmitMs διαθέσιμα
+        val span = if (size > 1) lastTimeMs() - firstTimeMs() else 0L
+        if (span < minEmitMs) return false
 
-        // Initialize hop grid once when first emit is ready
-        if (gridAnchorMs == null) {
-            val anchor = firstSeenMs!! + minEmitMs
-            gridAnchorMs = ceilToGrid(anchor, hopMs)
+        // Κλείδωμα πλέγματος στο πρώτο emit: ceil(firstSeen+3s, hop)
+        if (nextEdgeMs == null) {
+            val firstTarget = firstSeenMs!! + minEmitMs
+            gridAnchorMs = ceilToGrid(firstTarget, hopMs)   // info only
             nextEdgeMs = gridAnchorMs
         }
 
-        val currentGrid = floorToGrid(tMs, gridAnchorMs!!, hopMs)
-
-        // If we somehow skipped edges (e.g. pause/resume), resync to next full grid step
-        if (nextEdgeMs!! < currentGrid) {
-            nextEdgeMs = currentGrid + hopMs
-        }
-
-        // Emit when we reach or pass the next edge
+        // Emit όταν περάσουμε το grid edge — χωρίς drift.
         if (tMs >= nextEdgeMs!!) {
-            if (justSwitchedToFull) justSwitchedToFull = false
-            nextEdgeMs = currentGrid + hopMs
+            // Catch-up χωρίς bursts: πηδάμε edges μέχρι να πάμε ακριβώς μπροστά από now
+            do { nextEdgeMs = nextEdgeMs!! + hopMs } while (nextEdgeMs!! <= tMs)
             return true
         }
         return false
     }
 
-    /**
-     * Copies the current window into preallocated arrays.
-     * Returns how many samples were written.
-     *
-     * tSec: relative time (0..~window), x/y/z: acceleration.
-     */
-    fun copyWindowInto(
-        tSec: DoubleArray,
-        x: DoubleArray,
-        y: DoubleArray,
-        z: DoubleArray
-    ): Int {
-        val n = size
-        require(tSec.size >= n && x.size >= n && y.size >= n && z.size >= n) {
-            "Destination arrays too small (need at least $n)"
-        }
-        if (n == 0) return 0
+    // ---------- Exporters ----------
 
-        val baseIdx = head
-        val t0 = tMsBuf[baseIdx]
-        var i = 0
-        while (i < n) {
-            val idx = (baseIdx + i) % cap
-            tSec[i] = tMsBuf[idx].toDouble()
-            x[i] = xBuf[idx].toDouble()
-            y[i] = yBuf[idx].toDouble()
-            z[i] = zBuf[idx].toDouble()
-            i++
+    /** ABSOLUTE MONOTONIC ms για το *τελευταίο* targetSpanMs. */
+    fun copyWindowIntoMs(
+        tMsOut: LongArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
+        targetSpanMs: Long
+    ): Int {
+        if (size == 0) return 0
+        val tEnd = lastTimeMs()
+        val cutoff = tEnd - targetSpanMs
+        val startOffset = firstIndexAtOrAfter(cutoff)
+        val n = size - startOffset
+        require(tMsOut.size >= n && x.size >= n && y.size >= n && z.size >= n)
+
+        var k = 0
+        var i = startOffset
+        while (i < size) {
+            val idx = (head + i) % cap
+            tMsOut[k] = tMsBuf[idx]
+            x[k] = xBuf[idx].toDouble()
+            y[k] = yBuf[idx].toDouble()
+            z[k] = zBuf[idx].toDouble()
+            k++; i++
         }
         return n
     }
 
-    /** Estimates sampling frequency (Hz) from current window. */
+    /** RELATIVE seconds (0..span) για logs/plots, στο *τελευταίο* targetSpanMs. */
+    fun copyWindowIntoRelativeSec(
+        tSec: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
+        targetSpanMs: Long
+    ): Int {
+        if (size == 0) return 0
+        val tEnd = lastTimeMs()
+        if (targetSpanMs <= 0L) return 0
+        val cutoff = tEnd - targetSpanMs
+        val startOffset = firstIndexAtOrAfter(cutoff)
+        val n = size - startOffset
+        require(tSec.size >= n && x.size >= n && y.size >= n && z.size >= n)
+
+        val startIdx = (head + startOffset) % cap
+        val t0 = tMsBuf[startIdx]
+        var k = 0
+        var i = startOffset
+        while (i < size) {
+            val idx = (head + i) % cap
+            tSec[k] = (tMsBuf[idx] - t0)/1.000
+            x[k] = xBuf[idx].toDouble()
+            y[k] = yBuf[idx].toDouble()
+            z[k] = zBuf[idx].toDouble()
+            k++; i++
+        }
+        return n
+    }
+
+    /**
+     * UNIX seconds (double) exporter για το *τελευταίο* targetSpanMs.
+     * Δίνεις το bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+     * ώστε να χαρτογραφήσουμε MONOTONIC -> EPOCH.
+     */
+    fun copyWindowIntoUnixSec(
+        tUnixSecOut: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
+        targetSpanMs: Long, bootToEpochMs: Long
+    ): Int {
+        if (size == 0) return 0
+        val tEnd = lastTimeMs()
+        if (targetSpanMs <= 0L) return 0
+        val cutoff = tEnd - targetSpanMs
+        val startOffset = firstIndexAtOrAfter(cutoff)
+        val n = size - startOffset
+        require(tUnixSecOut.size >= n && x.size >= n && y.size >= n && z.size >= n)
+
+        var k = 0
+        var i = startOffset
+        while (i < size) {
+            val idx = (head + i) % cap
+            val epochMs = bootToEpochMs + tMsBuf[idx]
+            tUnixSecOut[k] = epochMs / 1000.0
+            x[k] = xBuf[idx].toDouble()
+            y[k] = yBuf[idx].toDouble()
+            z[k] = zBuf[idx].toDouble()
+            k++; i++
+        }
+        return n
+    }
+
+    /** Εκτίμηση fs από το τρέχον buffer. */
     fun estimateFsHz(): Double {
         val n = size
         if (n < 2) return 0.0
@@ -130,10 +167,19 @@ class SlidingWindow(
         return (n - 1) / spanSec
     }
 
-    /** Current number of samples in the window. */
     fun count(): Int = size
 
-    // ---- Internal helpers ----
+    // ---------- helpers ----------
+    private fun firstIndexAtOrAfter(cutoffT: Long): Int {
+        var i = 0
+        while (i < size) {
+            val idx = (head + i) % cap
+            if (tMsBuf[idx] >= cutoffT) break
+            i++
+        }
+        return i
+    }
+
     private fun append(t: Long, x: Float, y: Float, z: Float) {
         if (size < cap) {
             val idx = (head + size) % cap
@@ -156,13 +202,6 @@ class SlidingWindow(
     private fun lastTimeMs(): Long {
         val idx = (head + size - 1) % cap
         return tMsBuf[idx]
-    }
-
-    // ---- Grid math ----
-    private fun floorToGrid(t: Long, anchor: Long, step: Long): Long {
-        val delta = t - anchor
-        val k = if (delta >= 0) delta / step else (delta - (step - 1)) / step
-        return anchor + k * step
     }
 
     private fun ceilToGrid(t: Long, step: Long): Long {

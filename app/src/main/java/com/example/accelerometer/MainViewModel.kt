@@ -1,5 +1,6 @@
 package com.example.accelerometer
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
@@ -7,9 +8,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlin.math.sqrt
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -25,14 +28,21 @@ class MainViewModel @Inject constructor(
     )
 
     // Προκαθορισμένοι buffers (επανάχρηση – χωρίς allocations)
-    private val T = DoubleArray(2048)
-    private val X = DoubleArray(2048)
-    private val Y = DoubleArray(2048)
-    private val Z = DoubleArray(2048)
+    // A) Για relative logging (0..span sec)
+    private val Trel = DoubleArray(4096)
+    // B) Για Unix seconds (t_bout) που ζητά ο walking algorithm
+    private val Tunix = DoubleArray(4096)
+    // C) Για monotonic ms αν ποτέ χρειαστείς ABS export
+    private val TmsMono = LongArray(4096)
 
-    private var lastEmitMs: Long? = null
+    private val X = DoubleArray(4096)
+    private val Y = DoubleArray(4096)
+    private val Z = DoubleArray(4096)
 
-    // --- UI values (τρέχουσες τιμές αισθητήρα) ---
+    // για μέτρηση απόστασης παραθύρων σε MONOTONIC
+    private var lastEmitBootMs: Long? = null
+
+    // --- UI values (τρέχουσες τιμές αισθητήρα, σε EPOCH ms για εμφάνιση) ---
     var tMs by mutableStateOf(0L)
         private set
     var ax by mutableStateOf(0f)
@@ -42,43 +52,88 @@ class MainViewModel @Inject constructor(
     var az by mutableStateOf(0f)
         private set
 
+
+    private fun onNewSample(tEpochMs: Long, x: Float, y: Float, z: Float) {
+        tMs = tEpochMs
+        ax = x
+        ay = y
+        az = z
+
+    }
+
     fun startListeningSensor() {
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
-            val tEpochMs = timestampNs   // σε ms (monotonic)
-            tMs = tEpochMs
-            ax = x; ay = y; az = z
+            // 1) MONOTONIC ms για logic
+            val tMonoMs = timestampNs/1_000_000L
+            Log.e("Time", "$tMonoMs")
+            // 2) Bridge MONOTONIC -> EPOCH (για UI/Export)
+            val bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+
+
+            // UI δείχνει epoch (προαιρετικό)
+            //onNewSample(tEpochMs, x, y, z)
 
             // Επεξεργασία στο background thread (όχι στο UI)
-            CoroutineScope(Dispatchers.Default).launch {
-                val shouldEmit = window.push(tEpochMs, x, y, z)
-                if (shouldEmit) {
-                    val n = window.copyWindowInto(T, X, Y, Z)
-                    val fs = window.estimateFsHz()
-                    val tStart = T[0]
-                    val tEnd = T[n - 1]
-                    val tSpan = tEnd - tStart
+            viewModelScope.launch(Dispatchers.Default) {
+                // SlidingWindow δουλεύει ΜΟΝΟ με MONOTONIC
+                val shouldEmit = window.push(tMonoMs, x, y, z)
+                if (!shouldEmit) return@launch
 
-                    val currentEmit = System.currentTimeMillis()
-                    val deltaSec = if (lastEmitMs != null)
-                        (currentEmit - lastEmitMs!!) / 1000.0 else 0.0
-                    lastEmitMs = currentEmit
+                // Span export: 3s στο warm-up, 6s μετά
+                val spanMs = window.targetSpanMs(tMonoMs)
+
+                // (A) Relative export (0..span sec) για έλεγχο/plots/logs
+                val nRel = window.copyWindowIntoRelativeSec(
+                    tSec = Trel, x = X, y = Y, z = Z, targetSpanMs = spanMs
+                )
+
+                // (B) UNIX seconds export για τον walking algorithm (αυτό θα χρησιμοποιήσεις)
+                val nUnix = window.copyWindowIntoUnixSec(
+                    tUnixSecOut = Tunix, x = X, y = Y, z = Z,
+                    targetSpanMs = spanMs, bootToEpochMs = bootToEpochMs
+                )
+
+                // Εκτίμηση fs από το τρέχον buffer
+                val fs = window.estimateFsHz()
+
+                // Απόσταση από προηγούμενο emit (MONOTONIC)
+                val deltaSec = if (lastEmitBootMs != null)
+                    (tMonoMs - lastEmitBootMs!!) /1.000 else 0.0
+                lastEmitBootMs = tMonoMs
+
+                // -------- Logs για έλεγχο --------
+                if (nRel > 0) {
+                    val tStartRel = Trel[0]
+                    val tEndRel   = Trel[nRel - 1]
+                    val spanRel   = tEndRel - tStartRel
 
                     Log.e("SW", "----- ΝΕΟ ΠΑΡΑΘΥΡΟ -----")
                     Log.e("SW", "Απόσταση από προηγούμενο: ${"%.3f".format(deltaSec)} s")
-                    Log.e("SW", "Μέγεθος δείγματος: $n | Εκτιμώμενο fs: ${"%.2f".format(fs)} Hz")
-                    Log.w("SW", "ΠΡΩΤΟ:  t=${"%.3f".format(T[0])} s | X[0]=${"%.4f".format(X[0])}")
-                    Log.w("SW", "ΤΕΛΕΥΤΑΙΟ: t=${"%.3f".format(T[n - 1])} s | X[n-1]=${"%.4f".format(X[n - 1])}")
-                    // Εκτύπωσε span για έλεγχο ομοιομορφίας
-                    if (n > 0) {
-                        val tSpan = T[n - 1] - T[0]
-                        Log.d("SW", "Χρονικό εύρος παραθύρου: ${"%.3f".format(tSpan)} s")
-                    }
-                    // Πρώτη και τελευταία γραμμή του παραθύρου
-
-
-                    // TODO: Εδώ μπορείς να καλέσεις τον walking algorithm
-                    // WalkingAlgorithm.process(X.copyOf(n), Y.copyOf(n), Z.copyOf(n), fs)
+                    Log.e("SW", "Μέγεθος: $nRel | fs≈${"%.2f".format(fs)} Hz | span≈${"%.3f".format(spanRel)} s")
+                    Log.w("SW", "REL first=${"%.3f".format(tStartRel)}s last=${"%.3f".format(tEndRel)}s X0=${"%.4f".format(X[0])} XN=${"%.4f".format(X[nRel-1])}")
                 }
+
+                if (nUnix > 0) {
+                    val firstEpoch = Tunix[0]
+                    val lastEpoch  = Tunix[nUnix - 1]
+                    Log.d("SW", "UNIX first=${"%.3f".format(firstEpoch)} last=${"%.3f".format(lastEpoch)}")
+
+
+                }
+
+                // -------- ΕΔΩ καλείς τον walking algorithm --------
+                // Tunix: DoubleArray σε UNIX seconds (ακριβώς όπως ζητάει το preprocess_bout)
+                // X/Y/Z: DoubleArray με τιμές ανά δείγμα
+                // fs: εκτίμηση συχνότητας
+                //
+                // example:
+                // Walking.preprocess_bout(
+                //     t_bout = Tunix.copyOf(nUnix),
+                //     x_bout = X.copyOf(nUnix),
+                //     y_bout = Y.copyOf(nUnix),
+                //     z_bout = Z.copyOf(nUnix),
+                //     fs = 10 // ή fs.toInt() αν το θες από estimate
+                // )
             }
         }
         accelerometer.startListening()

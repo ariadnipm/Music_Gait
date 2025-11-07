@@ -14,6 +14,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.accelerometer.ui.theme.AccelerometerTheme
 import  dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.viewModels
+import androidx.compose.ui.unit.dp
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -31,7 +32,7 @@ class MainActivity : ComponentActivity() {
                                 "epoch(ms): ${viewModel.tMs}\n" +
                                 "epoch(s): ${"%.3f".format(viewModel.tMs.toSecondsSinceEpoch())}\n" +
                                 "local time: ${viewModel.tMs.toDateTimeString()}",
-                        modifier = Modifier.padding(innerPadding)
+                        modifier = Modifier.padding(innerPadding).padding(16.dp)
                     )
                 }
             }
