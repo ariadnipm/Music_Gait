@@ -62,18 +62,14 @@ class MainViewModel @Inject constructor(
     }
 
     fun startListeningSensor() {
+
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
             // 1) MONOTONIC ms για logic
             val tMonoMs = timestampNs/1_000_000L
-            Log.e("Time", "$tMonoMs")
             // 2) Bridge MONOTONIC -> EPOCH (για UI/Export)
+
             val bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
-
-
-            // UI δείχνει epoch (προαιρετικό)
-            //onNewSample(tEpochMs, x, y, z)
-
-            // Επεξεργασία στο background thread (όχι στο UI)
+            onNewSample(tMonoMs+bootToEpochMs,x,y,z)
             viewModelScope.launch(Dispatchers.Default) {
                 // SlidingWindow δουλεύει ΜΟΝΟ με MONOTONIC
                 val shouldEmit = window.push(tMonoMs, x, y, z)
@@ -98,7 +94,7 @@ class MainViewModel @Inject constructor(
 
                 // Απόσταση από προηγούμενο emit (MONOTONIC)
                 val deltaSec = if (lastEmitBootMs != null)
-                    (tMonoMs - lastEmitBootMs!!) /1.000 else 0.0
+                    (tMonoMs - lastEmitBootMs!!) /1000.0 else 0.0
                 lastEmitBootMs = tMonoMs
 
                 // -------- Logs για έλεγχο --------

@@ -119,7 +119,7 @@ class SlidingWindow(
         var i = startOffset
         while (i < size) {
             val idx = (head + i) % cap
-            tSec[k] = (tMsBuf[idx] - t0)/1.000
+            tSec[k] = (tMsBuf[idx] - t0)/1000.0
             x[k] = xBuf[idx].toDouble()
             y[k] = yBuf[idx].toDouble()
             z[k] = zBuf[idx].toDouble()

@@ -54,11 +54,10 @@ abstract class AndroidSensor(private val context: Context,
         }
         if (event?.sensor?.type == sensorType ) {
             onSensorValuesChanged?.invoke(event.values.toList())
-            val bootToEpochMs =
-                System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
-            val tEpochMs = bootToEpochMs + (event.timestamp)
+
             val v = event.values
             if (v.size >= 3) {
+                val tEpochMs = event.timestamp
                 onSensorSample?.invoke(tEpochMs, v[0], v[1], v[2])
             }
         }
