@@ -1,21 +1,13 @@
 package com.example.accelerometer
 
-import android.util.Log
 import kotlin.math.ceil
 import kotlin.math.max
 
-/**
- * High-precision time-based sliding window using a ring buffer.
- *
- * Internal time: MONOTONIC ms (event.timestamp / 1e6).
- * Warm-up: emits 3 s windows until total span >= 6 s.
- * Full: emits 6 s windows every 1 s (grid-locked, no drift).
- * O(1) insert/remove, zero allocations after init.
- */
+
 class SlidingWindow(
-    private val windowMs: Long = 6_000L,   // πλήρες παράθυρο
-    private val hopMs: Long = 1_000L,      // βήμα emit
-    private val minEmitMs: Long = 3_000L,  // warm-up μέγεθος
+    private val windowMs: Long = 6_000L,
+    private val hopMs: Long = 1_000L,
+    private val minEmitMs: Long = 3_000L,
     maxHz: Double = 100.0,
     headroomFactor: Double = 1.3
 ) {
@@ -33,50 +25,47 @@ class SlidingWindow(
     private var head = 0
     private var size = 0
 
-    // ---- timing ----
-    private var firstSeenMs: Long? = null
-    private var gridAnchorMs: Long? = null   // αφετηρία πλέγματος (πληροφοριακό)
-    private var nextEdgeMs: Long? = null     // επόμενο emit πάνω στο πλέγμα
 
-    /** 3s στο warm-up, 6s μετά. Κάλεσέ το τη στιγμή του emit. */
+    private var firstSeenMs: Long? = null
+    private var gridAnchorMs: Long? = null
+    private var nextEdgeMs: Long? = null
+
+    /** Decides whether it's the warm-up phase or not(3s or 6s). */
     fun targetSpanMs(now: Long): Long {
         val full = (firstSeenMs != null) && ((now - firstSeenMs!!) >= windowMs)
         return if (full) windowMs else minEmitMs
     }
 
-    /** Push νέου δείγματος (tMs = MONOTONIC ms). Επιστρέφει true όταν πρέπει να γίνει emit. */
+    /** Push a new sample and return true when it's time to emit. */
     fun push(tMs: Long, x: Float, y: Float, z: Float): Boolean {
         if (firstSeenMs == null) firstSeenMs = tMs
         append(tMs, x, y, z)
 
-        // Κρατάμε ΠΑΝΤΑ ≤ windowMs ιστορία (προβλέψιμο state)
+
         val cutoff = tMs - windowMs
         while (size > 0 && firstTimeMs() < cutoff) popOldest()
 
-        // Για να επιτρέψουμε emit θέλουμε τουλάχιστον minEmitMs διαθέσιμα
+
         val span = if (size > 1) lastTimeMs() - firstTimeMs() else 0L
         if (span < minEmitMs) return false
 
-        // Κλείδωμα πλέγματος στο πρώτο emit: ceil(firstSeen+3s, hop)
+
         if (nextEdgeMs == null) {
             val firstTarget = firstSeenMs!! + minEmitMs
             gridAnchorMs = ceilToGrid(firstTarget, hopMs)   // info only
             nextEdgeMs = gridAnchorMs
         }
 
-        // Emit όταν περάσουμε το grid edge — χωρίς drift.
         if (tMs >= nextEdgeMs!!) {
-            // Catch-up χωρίς bursts: πηδάμε edges μέχρι να πάμε ακριβώς μπροστά από now
             do { nextEdgeMs = nextEdgeMs!! + hopMs } while (nextEdgeMs!! <= tMs)
             return true
         }
         return false
     }
 
-    // ---------- Exporters ----------
 
     /** ABSOLUTE MONOTONIC ms για το *τελευταίο* targetSpanMs. */
-    fun copyWindowIntoMs(
+    /*fun copyWindowIntoMs(
         tMsOut: LongArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
         targetSpanMs: Long
     ): Int {
@@ -99,7 +88,7 @@ class SlidingWindow(
         }
         return n
     }
-
+*/
     /** RELATIVE seconds (0..span) για logs/plots, στο *τελευταίο* targetSpanMs. */
     fun copyWindowIntoRelativeSec(
         tSec: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
@@ -128,11 +117,7 @@ class SlidingWindow(
         return n
     }
 
-    /**
-     * UNIX seconds (double) exporter για το *τελευταίο* targetSpanMs.
-     * Δίνεις το bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
-     * ώστε να χαρτογραφήσουμε MONOTONIC -> EPOCH.
-     */
+
     fun copyWindowIntoUnixSec(
         tUnixSecOut: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
         targetSpanMs: Long, bootToEpochMs: Long
@@ -159,7 +144,7 @@ class SlidingWindow(
         return n
     }
 
-    /** Εκτίμηση fs από το τρέχον buffer. */
+
     fun estimateFsHz(): Double {
         val n = size
         if (n < 2) return 0.0
@@ -167,7 +152,6 @@ class SlidingWindow(
         return (n - 1) / spanSec
     }
 
-    fun count(): Int = size
 
     // ---------- helpers ----------
     private fun firstIndexAtOrAfter(cutoffT: Long): Int {
