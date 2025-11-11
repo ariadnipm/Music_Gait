@@ -8,6 +8,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Χρησιμοποιούμε global sessionId για κάθε εκτέλεση
+private val sessionId: String =
+    SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+
 fun saveWindowToCsv(
     context: Context,
     windowIndex: Int,
@@ -18,13 +22,13 @@ fun saveWindowToCsv(
     z: DoubleArray
 ) {
     try {
-        // 1) Φάκελος σε external app storage (ορατός με adb/File Manager)
-        val dir = File(context.getExternalFilesDir(null), "windows")
-        if (!dir.exists()) dir.mkdirs()
+        // 1) Δημιουργία υποφακέλου για το τρέχον session
+        val baseDir = File(context.getExternalFilesDir(null), "sw_dumps")
+        val sessionDir = File(baseDir, sessionId)
+        if (!sessionDir.exists()) sessionDir.mkdirs()
 
-        // 2) Όνομα αρχείου με timestamp (ώστε να μη γίνει overwrite)
-        val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val file = File(dir, "window_${windowIndex}_$ts.csv")
+        // 2) Δημιουργία αρχείου μέσα στο session folder
+        val file = File(sessionDir, "window_${windowIndex}.csv")
 
         // 3) Γράψιμο CSV
         file.bufferedWriter().use { w ->
@@ -42,8 +46,10 @@ fun saveWindowToCsv(
                 )
             }
         }
-        Log.i("CSV", "Saved: ${file.absolutePath}")
+
+        Log.i("CSV", "✅ Saved: ${file.absolutePath}")
+
     } catch (e: IOException) {
-        Log.e("CSV", "Error saving CSV: ${e.message}")
+        Log.e("CSV", "❌ Error saving CSV: ${e.message}")
     }
 }

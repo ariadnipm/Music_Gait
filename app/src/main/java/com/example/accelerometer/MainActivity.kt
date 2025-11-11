@@ -1,67 +1,84 @@
 package com.example.accelerometer
 
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.accelerometer.ui.theme.AccelerometerTheme
-import  dagger.hilt.android.AndroidEntryPoint
-import androidx.activity.viewModels
-import androidx.compose.ui.unit.dp
+import com.example.accelerometer.ui.theme.AccelerometerTheme // <- βάλε το δικό σου theme (ή άλλαξέ το)
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: MainViewModel by viewModels()
+    // Runtime permission launcher για Android 13+
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* δεν χρειάζεται handling εδώ */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Ζήτα POST_NOTIFICATIONS μόνο σε Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         setContent {
-            AccelerometerTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Text(
-                        text = "ax: ${viewModel.ax}, ay: ${viewModel.ay}, az: ${viewModel.az}\n" +
-                                "epoch(ms): ${viewModel.tMs}\n" +
-                                "epoch(s): ${"%.3f".format(viewModel.tMs.toSecondsSinceEpoch())}\n" +
-                                "local time: ${viewModel.tMs.toDateTimeString()}",
-                        modifier = Modifier.padding(innerPadding).padding(16.dp)
-                    )
+            AccelerometerTheme  {
+                Scaffold(modifier = Modifier.fillMaxSize()) { inner ->
+                    Column(
+                        modifier = Modifier
+                            .padding(inner)
+                            .fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+
+                        Button(onClick = { startServiceSafe() }) {
+                            Text("Start")
+                        }
+
+                        Button(onClick = { stopServiceSafe() }) {
+                            Text("Stop")
+                        }
+                    }
                 }
             }
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        viewModel.startListeningSensor()
+    private fun startServiceSafe() {
+        val intent = Intent(applicationContext, RunningService::class.java)
+            .apply { action = RunningService.Actions.START.toString() }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
     }
 
-    override fun onStop() {
-        super.onStop()
-        viewModel.stopListeningSensor()
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    AccelerometerTheme {
-        Greeting("Android")
+    private fun stopServiceSafe() {
+        val intent = Intent(applicationContext, RunningService::class.java)
+            .apply { action = RunningService.Actions.STOP.toString() }
+        // Για stop αρκεί startService με action=STOP (το service θα καλέσει stopClean)
+        startService(intent)
     }
 }

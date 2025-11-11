@@ -33,7 +33,7 @@ abstract class AndroidSensor(private val context: Context,
 
         }
         sensor?.let {
-            sensorManager.registerListener(this, it, 20_000)
+            sensorManager.registerListener(this, it, 20_000,0)
 
         }
     }

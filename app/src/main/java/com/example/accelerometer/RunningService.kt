@@ -1,103 +1,100 @@
+// RunningService.kt
 package com.example.accelerometer
-/*
-import android.content.Context
+
+import android.app.Service
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.ViewModel
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import androidx.core.app.NotificationCompat
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import javax.inject.Inject
 
-@HiltViewModel
-class MainViewModel @Inject constructor(
-    private val accelerometer: MeasurableSensor,
-    @ApplicationContext private val appContext: Context
-) : ViewModel() {
+@AndroidEntryPoint
+class RunningService : Service() {
 
-    private val window = SlidingWindow(
-        windowMs = 6_000L,
-        hopMs = 1_000L,
-        minEmitMs = 3_000L,
-        maxHz = 100.0
-    )
-    private val bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+    enum class Actions { START, STOP }
 
-    // --- Relative time (κρατάω όπως το είχες) ---
-    private val Trel = DoubleArray(4096)
+    // ---- ό,τι είχες injected στο VM, τώρα injected στο Service ----
+    @Inject lateinit var accelerometer: MeasurableSensor
+    @Inject lateinit var serviceScope: CoroutineScope
+    @Inject lateinit var window: SlidingWindow
 
-    // --- Ping–pong snapshots για να μη γίνεται overwrite ---
+    // --- κρατάμε ΑΚΡΙΒΩΣ τα ίδια πεδία με το ViewModel ---
+    private val Trel   = DoubleArray(4096)
+
     private val TunixA = DoubleArray(4096)
-    private val XA = DoubleArray(4096)
-    private val YA = DoubleArray(4096)
-    private val ZA = DoubleArray(4096)
+    private val XA     = DoubleArray(4096)
+    private val YA     = DoubleArray(4096)
+    private val ZA     = DoubleArray(4096)
 
     private val TunixB = DoubleArray(4096)
-    private val XB = DoubleArray(4096)
-    private val YB = DoubleArray(4096)
-    private val ZB = DoubleArray(4096)
+    private val XB     = DoubleArray(4096)
+    private val YB     = DoubleArray(4096)
+    private val ZB     = DoubleArray(4096)
 
     private var useA = true
-
     private var lastEmitBootMs: Long? = null
-
-    var tMs by mutableStateOf(0L)
-        private set
-    var ax by mutableStateOf(0f)
-        private set
-    var ay by mutableStateOf(0f)
-        private set
-    var az by mutableStateOf(0f)
-        private set
-
-    private fun onNewSample(tEpochMs: Long, x: Float, y: Float, z: Float) {
-        tMs = tEpochMs
-        ax = x
-        ay = y
-        az = z
-    }
-
     private var windowsDumped = 0
 
-    // 🔒 Σειριοποιεί push→export ώστε το snapshot να είναι συνεπές
     private val swMutex = Mutex()
+    private var bootToEpochMs: Long = 0L
+    private var running = false
 
-    fun startListeningSensor() {
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            Actions.START.toString() -> start()
+            Actions.STOP.toString()  -> stopClean()
+            else -> start()
+        }
+        return START_STICKY
+    }
+
+    private fun start() {
+        if (running) return
+        running = true
+
+        // Notification + foreground (όπως είχες)
+        val notif = NotificationCompat.Builder(this, "running_channel")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Run is active")
+            .setContentText("Collecting data…")
+            .setOngoing(true)
+            .build()
+        startForeground(1, notif)
+
+        // reset ανά session
+        useA = true
+        windowsDumped = 0
+        lastEmitBootMs = null
+        bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+
+        // listener ΙΔΙΑ λογική με VM
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
-            // 1) MONOTONIC ms
             val tMonoMs = timestampNs / 1_000_000L
 
-            // UI στο main thread
-            viewModelScope.launch {
-                onNewSample(tMonoMs + bootToEpochMs, x, y, z)
-            }
-
-            // Επεξεργασία / emit
-            viewModelScope.launch(Dispatchers.Default) {
+            serviceScope.launch {
                 var nRel = 0
                 var nUnix = 0
                 var spanMs = 0L
                 var fs = 0.0
 
-                // references στο σετ που ΘΑ γεμίσει τώρα
                 lateinit var outT: DoubleArray
                 lateinit var outX: DoubleArray
                 lateinit var outY: DoubleArray
                 lateinit var outZ: DoubleArray
 
-                // για logs relative εκτός lock
                 var tStartRel = 0.0
                 var tEndRel = 0.0
                 var spanRel = 0.0
 
-                // 🔒 Κρίσιμο τμήμα: push → targetSpanMs → export (Relative+Unix) → fs → toggle
                 swMutex.withLock {
                     val useABefore = useA
                     outT = if (useABefore) TunixA else TunixB
@@ -116,8 +113,8 @@ class MainViewModel @Inject constructor(
                     )
                     if (nRel > 0) {
                         tStartRel = Trel[0]
-                        tEndRel = Trel[nRel - 1]
-                        spanRel = tEndRel - tStartRel
+                        tEndRel   = Trel[nRel - 1]
+                        spanRel   = tEndRel - tStartRel
                     }
 
                     // (B) UNIX seconds export (για walking algorithm)
@@ -126,15 +123,19 @@ class MainViewModel @Inject constructor(
                         targetSpanMs = spanMs, bootToEpochMs = bootToEpochMs
                     )
 
+                    // Εκτίμηση fs από το τρέχον buffer
                     fs = window.estimateFsHz()
+
+                    // Απόσταση από προηγούμενο emit (MONOTONIC)
+                    val deltaSec = if (lastEmitBootMs != null)
+                        (tMonoMs - lastEmitBootMs!!) / 1000.0 else 0.0
                     lastEmitBootMs = tMonoMs
 
-                    // εναλλαγή σετ για το επόμενο emit (αποφυγή overwrite)
+                    // εναλλαγή σετ (αποφυγή overwrite)
                     useA = !useABefore
                 }
-                // 🔓 Εκτός lock: ασφαλής χρήση του snapshot outT/outX/outY/outZ
+                // ---- εκτός lock: ασφαλής χρήση snapshot ----
 
-                // -------- Logs για έλεγχο --------
                 if (nRel > 0) {
                     Log.e("SW", "----- ΝΕΟ ΠΑΡΑΘΥΡΟ -----")
                     Log.e("SW", "Μέγεθος: $nRel | fs≈${"%.2f".format(fs)} Hz | span≈${"%.3f".format(spanRel)} s")
@@ -149,10 +150,10 @@ class MainViewModel @Inject constructor(
 
                 if (nUnix > 0 && windowsDumped < 10) {
                     saveWindowToCsv(
-                        context = appContext,
+                        context = applicationContext,
                         windowIndex = windowsDumped + 1,
                         n = nUnix,
-                        tUnix = outT,  // <- snapshot από ping-pong
+                        tUnix = outT,
                         x = outX,
                         y = outY,
                         z = outZ
@@ -160,26 +161,29 @@ class MainViewModel @Inject constructor(
                     windowsDumped++
                 }
 
-                // -------- ΕΔΩ καλείς τον walking algorithm --------
+                // -------- εδώ κάνεις call τον walking algorithm --------
                 // Walking.preprocess_bout(
-                //     t_bout = outT.copyOf(nUnix),   // ή δώσ' τα απευθείας αν ο native τα διαβάζει sync
-                //     x_bout = outX.copyOf(nUnix),
-                //     y_bout = outY.copyOf(nUnix),
-                //     z_bout = outZ.copyOf(nUnix),
-                //     fs = 10 // ή fs.toInt() από estimate
+                //   t_bout = outT.copyOf(nUnix),
+                //   x_bout = outX.copyOf(nUnix),
+                //   y_bout = outY.copyOf(nUnix),
+                //   z_bout = outZ.copyOf(nUnix),
+                //   fs = 10 // ή fs.toInt()
                 // )
             }
         }
         accelerometer.startListening()
     }
 
-    fun stopListeningSensor() {
+    private fun stopClean() {
+        running = false
         accelerometer.stopListening()
-    }
 
-    override fun onCleared() {
-        super.onCleared()
-        accelerometer.stopListening()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
     }
 }
-*/
