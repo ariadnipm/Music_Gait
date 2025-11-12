@@ -22,16 +22,16 @@ import com.example.accelerometer.ui.theme.AccelerometerTheme // <- βάλε το
 
 class MainActivity : ComponentActivity() {
 
-    // Runtime permission launcher για Android 13+
+
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* δεν χρειάζεται handling εδώ */ }
+    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Ζήτα POST_NOTIFICATIONS μόνο σε Android 13+
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
@@ -78,7 +78,6 @@ class MainActivity : ComponentActivity() {
     private fun stopServiceSafe() {
         val intent = Intent(applicationContext, RunningService::class.java)
             .apply { action = RunningService.Actions.STOP.toString() }
-        // Για stop αρκεί startService με action=STOP (το service θα καλέσει stopClean)
         startService(intent)
     }
 }

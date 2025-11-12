@@ -26,8 +26,8 @@ abstract class AndroidSensor(private val context: Context,
 
         }
         if (!::sensorManager.isInitialized && sensor == null) {
-            sensorManager = context.getSystemService(
-                SensorManager::class.java
+            sensorManager = context.applicationContext.getSystemService(
+                Context.SENSOR_SERVICE
             ) as SensorManager
             sensor = sensorManager.getDefaultSensor(sensorType)
 
@@ -47,18 +47,18 @@ abstract class AndroidSensor(private val context: Context,
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-       // android.util.Log.d("SENSOR", "ax=${event?.values[0]}")
+
 
         if (!doesSensorExist) {
             return
         }
         if (event?.sensor?.type == sensorType ) {
-            onSensorValuesChanged?.invoke(event.values.toList())
+          // onSensorValuesChanged?.invoke(event.values.toList())
 
             val v = event.values
             if (v.size >= 3) {
-                val tEpochMs = event.timestamp
-                onSensorSample?.invoke(tEpochMs, v[0], v[1], v[2])
+                val timestamp = event.timestamp
+                onSensorSample?.invoke(timestamp, v[0], v[1], v[2])
             }
         }
     }

@@ -1,4 +1,4 @@
-// RunningService.kt
+
 package com.example.accelerometer
 
 import android.app.Service
@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,30 +21,30 @@ class RunningService : Service() {
 
     enum class Actions { START, STOP }
 
-    // ---- ό,τι είχες injected στο VM, τώρα injected στο Service ----
+
     @Inject lateinit var accelerometer: MeasurableSensor
     @Inject lateinit var serviceScope: CoroutineScope
     @Inject lateinit var window: SlidingWindow
 
-    // --- κρατάμε ΑΚΡΙΒΩΣ τα ίδια πεδία με το ViewModel ---
-    private val Trel   = DoubleArray(4096)
 
-    private val TunixA = DoubleArray(4096)
+    private val treal   = DoubleArray(4096)
+
+    private val tunixA = DoubleArray(4096)
     private val XA     = DoubleArray(4096)
     private val YA     = DoubleArray(4096)
     private val ZA     = DoubleArray(4096)
 
-    private val TunixB = DoubleArray(4096)
+    private val tunixB = DoubleArray(4096)
     private val XB     = DoubleArray(4096)
     private val YB     = DoubleArray(4096)
     private val ZB     = DoubleArray(4096)
 
     private var useA = true
-    private var lastEmitBootMs: Long? = null
-    private var windowsDumped = 0
+    private var lastEmit: Long? = null
+    private var windows = 0
 
-    private val swMutex = Mutex()
-    private var bootToEpochMs: Long = 0L
+    private val mutex = Mutex()
+    private var bootToEpoch: Long = 0L
     private var running = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -61,7 +62,7 @@ class RunningService : Service() {
         if (running) return
         running = true
 
-        // Notification + foreground (όπως είχες)
+
         val notif = NotificationCompat.Builder(this, "running_channel")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Run is active")
@@ -70,20 +71,20 @@ class RunningService : Service() {
             .build()
         startForeground(1, notif)
 
-        // reset ανά session
-        useA = true
-        windowsDumped = 0
-        lastEmitBootMs = null
-        bootToEpochMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
 
-        // listener ΙΔΙΑ λογική με VM
+        useA = true
+        windows = 0
+        lastEmit = null
+        bootToEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+
+
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
             val tMonoMs = timestampNs / 1_000_000L
 
             serviceScope.launch {
                 var nRel = 0
                 var nUnix = 0
-                var spanMs = 0L
+                var span = 0L
                 var fs = 0.0
 
                 lateinit var outT: DoubleArray
@@ -95,9 +96,9 @@ class RunningService : Service() {
                 var tEndRel = 0.0
                 var spanRel = 0.0
 
-                swMutex.withLock {
+                mutex.withLock {
                     val useABefore = useA
-                    outT = if (useABefore) TunixA else TunixB
+                    outT = if (useABefore) tunixA else tunixB
                     outX = if (useABefore) XA else XB
                     outY = if (useABefore) YA else YB
                     outZ = if (useABefore) ZA else ZB
@@ -105,36 +106,36 @@ class RunningService : Service() {
                     val shouldEmit = window.push(tMonoMs, x, y, z)
                     if (!shouldEmit) return@launch
 
-                    spanMs = window.targetSpanMs(tMonoMs)
+                    span = window.targetSpanMs(tMonoMs)
 
-                    // (A) Relative export (logs/plots)
+
                     nRel = window.copyWindowIntoRelativeSec(
-                        tSec = Trel, x = outX, y = outY, z = outZ, targetSpanMs = spanMs
+                        tSec = treal, x = outX, y = outY, z = outZ, targetSpanMs = span
                     )
                     if (nRel > 0) {
-                        tStartRel = Trel[0]
-                        tEndRel   = Trel[nRel - 1]
+                        tStartRel = treal[0]
+                        tEndRel   = treal[nRel - 1]
                         spanRel   = tEndRel - tStartRel
                     }
 
-                    // (B) UNIX seconds export (για walking algorithm)
+
                     nUnix = window.copyWindowIntoUnixSec(
                         tUnixSecOut = outT, x = outX, y = outY, z = outZ,
-                        targetSpanMs = spanMs, bootToEpochMs = bootToEpochMs
+                        targetSpanMs = span, bootToEpochMs = bootToEpoch
                     )
 
-                    // Εκτίμηση fs από το τρέχον buffer
+
                     fs = window.estimateFsHz()
 
-                    // Απόσταση από προηγούμενο emit (MONOTONIC)
-                    val deltaSec = if (lastEmitBootMs != null)
-                        (tMonoMs - lastEmitBootMs!!) / 1000.0 else 0.0
-                    lastEmitBootMs = tMonoMs
 
-                    // εναλλαγή σετ (αποφυγή overwrite)
+                    val deltaSec = if (lastEmit != null)
+                        (tMonoMs - lastEmit!!) / 1000.0 else 0.0
+                    lastEmit = tMonoMs
+
+
                     useA = !useABefore
                 }
-                // ---- εκτός lock: ασφαλής χρήση snapshot ----
+
 
                 if (nRel > 0) {
                     Log.e("SW", "----- ΝΕΟ ΠΑΡΑΘΥΡΟ -----")
@@ -148,7 +149,7 @@ class RunningService : Service() {
                     Log.d("SW", "UNIX first=${"%.3f".format(firstEpoch)} last=${"%.3f".format(lastEpoch)}")
                 }
 
-                if (nUnix > 0 && windowsDumped < 10) {
+               /* if (nUnix > 0 && windowsDumped < 10) {
                     saveWindowToCsv(
                         context = applicationContext,
                         windowIndex = windowsDumped + 1,
@@ -159,7 +160,7 @@ class RunningService : Service() {
                         z = outZ
                     )
                     windowsDumped++
-                }
+                } */
 
                 // -------- εδώ κάνεις call τον walking algorithm --------
                 // Walking.preprocess_bout(
@@ -186,4 +187,12 @@ class RunningService : Service() {
         }
         stopSelf()
     }
+    override fun onDestroy() {
+        try { accelerometer.stopListening() } catch (_: Throwable) {}
+        try { serviceScope.cancel() } catch (_: Throwable) {}
+        super.onDestroy()
+    }
+
 }
+
+

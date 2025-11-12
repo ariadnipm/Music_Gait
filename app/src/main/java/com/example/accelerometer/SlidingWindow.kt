@@ -11,7 +11,7 @@ class SlidingWindow(
     maxHz: Double = 100.0,
     headroomFactor: Double = 1.3
 ) {
-    // ---- ring buffer ----
+    /** ring buffer creation */
     private val cap: Int = run {
         val basis = max(windowMs, minEmitMs)
         val capEst = ceil((basis / 1000.0) * maxHz * headroomFactor).toInt()
@@ -52,7 +52,7 @@ class SlidingWindow(
 
         if (nextEdgeMs == null) {
             val firstTarget = firstSeenMs!! + minEmitMs
-            gridAnchorMs = ceilToGrid(firstTarget, hopMs)   // info only
+            gridAnchorMs = ceilToGrid(firstTarget, hopMs)
             nextEdgeMs = gridAnchorMs
         }
 
@@ -64,32 +64,8 @@ class SlidingWindow(
     }
 
 
-    /** ABSOLUTE MONOTONIC ms για το *τελευταίο* targetSpanMs. */
-    /*fun copyWindowIntoMs(
-        tMsOut: LongArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
-        targetSpanMs: Long
-    ): Int {
-        if (size == 0) return 0
-        val tEnd = lastTimeMs()
-        val cutoff = tEnd - targetSpanMs
-        val startOffset = firstIndexAtOrAfter(cutoff)
-        val n = size - startOffset
-        require(tMsOut.size >= n && x.size >= n && y.size >= n && z.size >= n)
 
-        var k = 0
-        var i = startOffset
-        while (i < size) {
-            val idx = (head + i) % cap
-            tMsOut[k] = tMsBuf[idx]
-            x[k] = xBuf[idx].toDouble()
-            y[k] = yBuf[idx].toDouble()
-            z[k] = zBuf[idx].toDouble()
-            k++; i++
-        }
-        return n
-    }
-*/
-    /** RELATIVE seconds (0..span) για logs/plots, στο *τελευταίο* targetSpanMs. */
+    /** RELATIVE seconds (0..span) για logs/plots. */
     fun copyWindowIntoRelativeSec(
         tSec: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
         targetSpanMs: Long
