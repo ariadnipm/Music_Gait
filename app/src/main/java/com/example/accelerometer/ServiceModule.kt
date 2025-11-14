@@ -24,10 +24,10 @@ object ServiceModule {
     @Provides
     @ServiceScoped
     fun provideSlidingWindow(): SlidingWindow =
-        SlidingWindow(windowMs = 6_000L, hopMs = 1_000L, minEmitMs = 3_000L, maxHz = 100.0)
+        SlidingWindow(windowlength = 30_000L, step = 15_000L, minEmit = 15_000L, maxHz = 100.0)
 
     @Provides
     @ServiceScoped
     fun provideMeasurableSensor(@ApplicationContext ctx: Context): MeasurableSensor =
-        AccelerometerSensor(ctx) // <-- η δική σου υλοποίηση που ήδη έχεις
+        AccelerometerSensor(ctx) //
 }

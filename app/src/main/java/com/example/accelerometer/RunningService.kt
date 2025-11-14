@@ -46,7 +46,7 @@ class RunningService : Service() {
     private val mutex = Mutex()
     private var bootToEpoch: Long = 0L
     private var running = false
-
+    private var windowsDumped = 0
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -121,7 +121,7 @@ class RunningService : Service() {
 
                     nUnix = window.copyWindowIntoUnixSec(
                         tUnixSecOut = outT, x = outX, y = outY, z = outZ,
-                        targetSpanMs = span, bootToEpochMs = bootToEpoch
+                        targetSpanMs = span, bootToEpoch = bootToEpoch
                     )
 
 
@@ -149,7 +149,7 @@ class RunningService : Service() {
                     Log.d("SW", "UNIX first=${"%.3f".format(firstEpoch)} last=${"%.3f".format(lastEpoch)}")
                 }
 
-               /* if (nUnix > 0 && windowsDumped < 10) {
+               /* if (nUnix > 0 && windowsDumped < 3) {
                     saveWindowToCsv(
                         context = applicationContext,
                         windowIndex = windowsDumped + 1,

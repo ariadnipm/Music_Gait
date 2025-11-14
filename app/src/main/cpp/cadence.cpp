@@ -15,7 +15,6 @@
 //         System.loadLibrary("accelerometer")
 //      }
 //    }
-
 #include <jni.h>
 
 extern "C"

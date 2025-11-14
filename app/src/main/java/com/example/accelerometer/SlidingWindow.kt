@@ -5,15 +5,15 @@ import kotlin.math.max
 
 
 class SlidingWindow(
-    private val windowMs: Long = 6_000L,
-    private val hopMs: Long = 1_000L,
-    private val minEmitMs: Long = 3_000L,
+    private val windowlength: Long = 30_000L,
+    private val step: Long = 15_000L,
+    private val minEmit: Long = 15_000L,
     maxHz: Double = 100.0,
     headroomFactor: Double = 1.3
 ) {
     /** ring buffer creation */
     private val cap: Int = run {
-        val basis = max(windowMs, minEmitMs)
+        val basis = max(windowlength, minEmit)
         val capEst = ceil((basis / 1000.0) * maxHz * headroomFactor).toInt()
         max(64, capEst)
     }
@@ -32,8 +32,8 @@ class SlidingWindow(
 
     /** Decides whether it's the warm-up phase or not(3s or 6s). */
     fun targetSpanMs(now: Long): Long {
-        val full = (firstSeenMs != null) && ((now - firstSeenMs!!) >= windowMs)
-        return if (full) windowMs else minEmitMs
+        val full = (firstSeenMs != null) && ((now - firstSeenMs!!) >= windowlength)
+        return if (full) windowlength else minEmit
     }
 
     /** Push a new sample and return true when it's time to emit. */
@@ -42,22 +42,22 @@ class SlidingWindow(
         append(tMs, x, y, z)
 
 
-        val cutoff = tMs - windowMs
+        val cutoff = tMs - windowlength
         while (size > 0 && firstTimeMs() < cutoff) popOldest()
 
 
         val span = if (size > 1) lastTimeMs() - firstTimeMs() else 0L
-        if (span < minEmitMs) return false
+        if (span < minEmit) return false
 
 
         if (nextEdgeMs == null) {
-            val firstTarget = firstSeenMs!! + minEmitMs
-            gridAnchorMs = ceilToGrid(firstTarget, hopMs)
+            val firstTarget = firstSeenMs!! + minEmit
+            gridAnchorMs = ceilToGrid(firstTarget, step)
             nextEdgeMs = gridAnchorMs
         }
 
         if (tMs >= nextEdgeMs!!) {
-            do { nextEdgeMs = nextEdgeMs!! + hopMs } while (nextEdgeMs!! <= tMs)
+            do { nextEdgeMs = nextEdgeMs!! + step } while (nextEdgeMs!! <= tMs)
             return true
         }
         return false
@@ -96,7 +96,7 @@ class SlidingWindow(
 
     fun copyWindowIntoUnixSec(
         tUnixSecOut: DoubleArray, x: DoubleArray, y: DoubleArray, z: DoubleArray,
-        targetSpanMs: Long, bootToEpochMs: Long
+        targetSpanMs: Long, bootToEpoch: Long
     ): Int {
         if (size == 0) return 0
         val tEnd = lastTimeMs()
@@ -110,7 +110,7 @@ class SlidingWindow(
         var i = startOffset
         while (i < size) {
             val idx = (head + i) % cap
-            val epochMs = bootToEpochMs + tMsBuf[idx]
+            val epochMs = bootToEpoch + tMsBuf[idx]
             tUnixSecOut[k] = epochMs / 1000.0
             x[k] = xBuf[idx].toDouble()
             y[k] = yBuf[idx].toDouble()
@@ -129,7 +129,7 @@ class SlidingWindow(
     }
 
 
-    // ---------- helpers ----------
+
     private fun firstIndexAtOrAfter(cutoffT: Long): Int {
         var i = 0
         while (i < size) {

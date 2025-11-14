@@ -6,9 +6,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
-import kotlin.invoke
+
 
 abstract class AndroidSensor(private val context: Context,
                              private val sensorFeature: String,
