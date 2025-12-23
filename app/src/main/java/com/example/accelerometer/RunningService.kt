@@ -80,6 +80,9 @@ class RunningService : Service() {
             .build()
         startForeground(1, notif)
 
+
+
+
         // Reset state on each start
         useA = true
         windows = 0
@@ -203,6 +206,20 @@ class RunningService : Service() {
         // if (nUnix > 0) {
         //   val cadence = NativeCadence.compute(outT, outX, outY, outZ, nUnix, fsWin /* or fsEst */)
         // }
+        // Run FCWT test
+        if ( nUnix > 0) {
+            val ok = Bridge.fcwtWindowTest(
+                tUnixSec = outT,
+                x = outX,
+                y = outY,
+                z = outZ,
+                n = nUnix,
+                fs = 50,      // ή fsWin.roundToInt() αν θες
+                loops = 1
+            )
+            Log.d("FCWT_TEST", "fcwtWindowTest result=$ok")
+        }
+
     }
 
     private fun stopClean() {
