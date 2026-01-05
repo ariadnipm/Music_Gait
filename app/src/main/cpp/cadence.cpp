@@ -6,7 +6,7 @@
 
 // include fcwt headers (προσαρμόζεις αν το path είναι αλλιώς)
 #include "fcwt.h"   // ή "fcwt/fcwt.h" ανάλογα πως το έχεις στα include dirs
-
+#include "cadencefun.h"
 #define LOG_TAG "FCWT_TEST"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)

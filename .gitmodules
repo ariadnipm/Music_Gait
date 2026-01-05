@@ -1,0 +1,3 @@
+[submodule "app/src/main/cpp/fcwt"]
+	path = app/src/main/cpp/fcwt
+	url = https://github.com/ariadnipm/fCWT.git

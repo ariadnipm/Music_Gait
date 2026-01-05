@@ -1,0 +1,649 @@
+#pragma once
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <numeric>
+#include <functional>
+#include <utility>
+#include <stdexcept>
+#include <optional>
+#include "compute_cwt.h"
+#include "helpers.h"
+/* Fill missing values if data is available for 70% of last second
+   otherwise trim the data of the last second
+   input: inarray-> input one data array,
+          fs-> sampling frequency */
+
+inline std::vector<double> adjust_bout(const std::vector<double>& inarray, int fs) {
+    std::vector<double> result = inarray;
+    size_t remainder = result.size() % fs;
+
+
+    if (remainder >= static_cast<size_t>(0.7 * fs)) {
+        size_t padding = fs - remainder;
+        double last_val = result.back();
+        for (size_t i = 0; i < padding; ++i) {
+            result.push_back(last_val);
+        }
+    } else {
+
+        size_t trim_size = (result.size() / fs) * fs;
+        result.resize(trim_size);
+    }
+
+    return result;
+}
+
+
+/*Preprocesses accelerometer data.
+  Resample input signal to a predefined sampling rate,compute vector magnitude
+  input:  t_bout-> array of  unix timestamp in seconds,
+          x_bout-> array of x-axis accelerometer data,
+          y_bout-> array of y-axis accelerometer data,
+          z_bout-> array of z-axis accelerometer data
+          */
+std::pair<std::vector<double>, std::vector<double>>  preprocess_bout(
+        const std::vector<double>& t_bout,
+        const std::vector<double>& x_bout,
+        const std::vector<double>& y_bout,
+        const std::vector<double>& z_bout,
+        int fs
+) {
+    //return empty if any  bout is too small
+    if (t_bout.size() < 2 || x_bout.size() < 2 ||
+        y_bout.size() < 2 || z_bout.size() < 2) {
+        return {{}, {}};
+    }
+
+
+    std::vector<double> t_bout_interp;
+    double t_start = t_bout[0];
+    double t_end = t_bout.back();
+    double dt = 1.0 / fs;
+
+    for (double t = 0; t < (t_end - t_start); t += dt) {
+        t_bout_interp.push_back(t + t_start);
+    }
+
+    if (t_bout_interp.empty()) {
+        return {{}, {}};
+    }
+
+
+    auto x_bout_interp = interp1d(t_bout, x_bout, t_bout_interp);
+    auto y_bout_interp = interp1d(t_bout, y_bout, t_bout_interp);
+    auto z_bout_interp = interp1d(t_bout, z_bout, t_bout_interp);
+
+
+    x_bout_interp = adjust_bout(x_bout_interp, fs);
+    y_bout_interp = adjust_bout(y_bout_interp, fs);
+    z_bout_interp = adjust_bout(z_bout_interp, fs);
+
+    // number of full seconds of measurements
+    size_t num_seconds = x_bout_interp.size() / fs;
+
+    size_t trim_size = num_seconds * fs;
+
+
+    t_bout_interp.resize(trim_size);
+
+    // trim and decimate time vector
+    std::vector<double> t_decimated;
+    for (size_t i = 0; i < t_bout_interp.size(); i += fs) {
+        t_decimated.push_back(t_bout_interp[i]);
+    }
+    t_bout_interp = t_decimated;
+
+    // compute vector magnitude
+    std::vector<double> vm_bout_interp(x_bout_interp.size());
+    for (size_t i = 0; i < x_bout_interp.size(); ++i) {
+        vm_bout_interp[i] = std::sqrt(
+                x_bout_interp[i] * x_bout_interp[i] +
+                y_bout_interp[i] * y_bout_interp[i] +
+                z_bout_interp[i] * z_bout_interp[i]
+        );
+    }
+
+    //standardize measurement to gravity units (g) if its recoreded in m/s²
+    if (!vm_bout_interp.empty()) {
+        double mean_vm = std::accumulate(vm_bout_interp.begin(),
+                                         vm_bout_interp.end(), 0.0) /
+                         vm_bout_interp.size();
+
+        if (mean_vm > 5.0) {
+
+            for (size_t i = 0; i < x_bout_interp.size(); ++i) {
+                x_bout_interp[i] /= 9.80665;
+                y_bout_interp[i] /= 9.80665;
+                z_bout_interp[i] /= 9.80665;
+            }
+        }
+    }
+
+    //compute vector magnitude after unit verification
+    for (size_t i = 0; i < x_bout_interp.size(); ++i) {
+        vm_bout_interp[i] = std::sqrt(
+                x_bout_interp[i] * x_bout_interp[i] +
+                y_bout_interp[i] * y_bout_interp[i] +
+                z_bout_interp[i] * z_bout_interp[i]
+        ) - 1.0;
+    }
+
+    return {t_bout_interp, vm_bout_interp};
+}
+/*Calculate peak to peak metric in one second time window*/
+std::vector<double> get_pp(const std::vector<double>& vm_bout, int fs)
+{
+    size_t total = vm_bout.size();
+    size_t num_seconds = total / fs;
+
+    std::vector<double> pp(num_seconds);
+
+    for (size_t col = 0; col < num_seconds; ++col) {
+
+        double min_val = vm_bout[col * fs];
+        double max_val = vm_bout[col * fs];
+
+        for (int row = 0; row < fs; ++row) {
+            size_t idx = col * fs + row;
+            double v = vm_bout[idx];
+
+            if (v < min_val) min_val = v;
+            if (v > max_val) max_val = v;
+        }
+
+        pp[col] = max_val - min_val;
+    }
+
+
+    return pp;
+}
+
+
+/*
+    Uses alpha and beta parameters to identify dominant peaks in
+    one-second non-overlapping windows in the product of Continuous Wavelet
+    Transformation. Dominant peaks need to occur within the step frequency
+    range.
+    input: freqs_interp-> frequency-domain (in Hz)
+        coefs_interp -> wavelet coefficients (-)
+        fs -> sampling frequency
+        step_freq -> predefined step frequency range
+        alpha - > maximum ratio between dominant peak below and within
+            step frequency range
+        beta -> maximum ratio between dominant peak above and within
+            step frequency range
+   */
+std::vector<std::vector<double>> identify_peaks_in_cwt(
+        const std::vector<double>& freqs_interp,                  // [freqs_interp]
+        const std::vector<std::vector<double>>& coefs_interp,     // [n_freqs][n_time]
+        int fs ,
+        std::pair<double,double> step_freq ,
+        double alpha ,
+        double beta
+) { //dominant peaks vector
+    std::vector<std::vector<double>> dp;
+
+
+    if (fs <= 0 || freqs_interp.empty() || coefs_interp.empty()) {
+        return dp;
+    }
+
+    const std::size_t num_rows = coefs_interp.size();
+
+    const std::size_t num_cols = coefs_interp[0].size();
+    if (num_rows != freqs_interp.size() || num_cols == 0) {
+        return dp;
+    }
+
+
+    for (const auto& row : coefs_interp) {
+        if (row.size() != num_cols) {
+            return dp;
+        }
+    }
+
+
+    const std::size_t num_cols2 = num_cols / static_cast<std::size_t>(fs);
+    if (num_cols2 == 0) {
+        return dp;
+    }
+
+    // initialize dp as a vector of zeros and size [num_rows x num_cols2]
+    dp.assign(num_rows, std::vector<double>(num_cols2, 0.0));
+
+    // helper to find index of closest frequency to target
+    auto argmin_abs = [&](double target) -> std::size_t {
+        std::size_t idx_min = 0;
+        double best = std::fabs(freqs_interp[0] - target);
+        for (std::size_t i = 1; i < freqs_interp.size(); ++i) {
+            double diff = std::fabs(freqs_interp[i] - target);
+            if (diff < best) {
+                best = diff;
+                idx_min = i;
+            }
+        }
+        return idx_min;
+    };
+
+    // Find indexes closer  to step_freq values
+    const std::size_t loc_min = argmin_abs(step_freq.first);
+    const std::size_t loc_max = argmin_abs(step_freq.second);
+
+    for (std::size_t i = 0; i < num_cols2; ++i) {
+        //segment measurement into one-second non-overlapping windows
+        const std::size_t x_start = i * static_cast<std::size_t>(fs);
+        const std::size_t x_end   = x_start + static_cast<std::size_t>(fs);
+
+        if (x_end > num_cols) {
+            break;
+        }
+
+        //identify peaks and their location in each 1s  window
+        std::vector<double> window(num_rows, 0.0);
+        for (std::size_t r = 0; r < num_rows; ++r) {
+            double sum = 0.0;
+            for (std::size_t t = x_start; t < x_end; ++t) {
+                sum += coefs_interp[r][t];
+            }
+            window[r] = sum;
+        }
+
+        std::vector<std::size_t> locs;
+        std::vector<double> pks;
+        find_peaks(window, locs, pks);
+
+        // no peaks found
+        if (locs.empty()) {
+
+            continue;
+        }
+
+        //  sort peaks by amplitude descending and rearrange locs to match the peaks order
+        std::vector<std::size_t> order(locs.size());
+        for (std::size_t k = 0; k < order.size(); ++k) {
+            order[k] = k;
+        }
+
+        std::sort(order.begin(), order.end(),
+                  [&](std::size_t a, std::size_t b) {
+                      return pks[a] > pks[b];
+                  });
+
+        std::vector<std::size_t> locs_sorted(locs.size());
+        std::vector<double>      pks_sorted(pks.size());
+        for (std::size_t k = 0; k < order.size(); ++k) {
+            locs_sorted[k] = locs[order[k]];
+            pks_sorted[k]  = pks[order[k]];
+        }
+        locs.swap(locs_sorted);
+        pks.swap(pks_sorted);
+
+
+
+        // account peaks that lie within step frequency range
+        std::optional<std::size_t> index_in_range_opt;
+        for (std::size_t j = 0; j < locs.size(); ++j) {
+            std::size_t loc_j = locs[j];
+            if (loc_j >= loc_min && loc_j <= loc_max) {
+                index_in_range_opt = j;
+                break;
+            }
+        }
+
+        std::vector<double> peak_vec(num_rows, 0.0);
+
+        if (index_in_range_opt.has_value()) {
+            std::size_t index_in_range = *index_in_range_opt;
+
+            // Check if there are peaks below and above the step frequency range
+            double max_peak_below = 0.0;
+            double max_peak_above = 0.0;
+            bool has_below = false;
+            bool has_above = false;
+
+            for (std::size_t j = 0; j < locs.size(); ++j) {
+                std::size_t loc_j = locs[j];
+                double pk = pks[j];
+
+                if (loc_j < loc_min) {
+                    if (!has_below || pk > max_peak_below) {
+                        max_peak_below = pk;
+                        has_below = true;
+                    }
+                } else if (loc_j > loc_max) {
+                    if (!has_above || pk > max_peak_above) {
+                        max_peak_above = pk;
+                        has_above = true;
+                    }
+                }
+            }
+
+            const double center_peak = pks[index_in_range];
+
+            if (center_peak > 0.0) {
+                const double ratio_a =
+                        has_below ? (max_peak_below / center_peak) : 0.0;
+                const double ratio_b =
+                        has_above ? (max_peak_above / center_peak) : 0.0;
+
+
+                if (ratio_b < beta || ratio_a < alpha) {
+                    const std::size_t freq_idx = locs[index_in_range];
+                    if (freq_idx < num_rows) {
+                        peak_vec[freq_idx] = 1.0;
+                    }
+                }
+            }
+
+        }
+
+
+
+
+        for (std::size_t r = 0; r < num_rows; ++r) {
+            dp[r][i] = peak_vec[r];
+        }
+    }
+
+    return dp;
+}
+
+/*Identifies continuous and sustained peaks.
+  input: valid_peaks->  binary matrix (1=peak,0=no peak) of valid peaks
+        min_t->  minimum duration of peaks (in seconds)
+        delta ->  maximum difference between consecutive peaks
+  returns the binary matrix of continuous dominant peaks */
+std::vector<std::vector<double>> find_continuous_dominant_peaks(
+        const std::vector<std::vector<double>>& valid_peaks,
+        int min_t,
+        int delta
+) {
+    std::vector<std::vector<double>> empty;
+
+    if (valid_peaks.empty() || min_t <= 0) {
+        return empty;
+    }
+
+    const std::size_t num_rows = valid_peaks.size();
+    const std::size_t num_cols = valid_peaks[0].size();
+
+    if (num_cols == 0) {
+        return empty;
+    }
+
+
+    for (const auto& row : valid_peaks) {
+        if (row.size() != num_cols) {
+            return empty;
+        }
+    }
+
+
+    std::vector<std::vector<double>> extended_peaks(
+            num_rows, std::vector<double>(num_cols + 1, 0.0)
+    );
+
+    for (std::size_t r = 0; r < num_rows; ++r) {
+        for (std::size_t c = 0; c < num_cols; ++c) {
+            extended_peaks[r][c] = valid_peaks[r][c];
+        }
+    }
+
+
+    std::vector<std::vector<double>> cont_peaks(
+            num_rows, std::vector<double>(num_cols + 1, 0.0)
+    );
+
+    const int num_cols_ext = static_cast<int>(num_cols) + 1;
+
+
+    std::vector<int> windows;
+    windows.reserve(2 * min_t - 1);
+    for (int w = 0; w < min_t; ++w) {
+        windows.push_back(w);
+    }
+    for (int w = min_t - 2; w >= 0; --w) {
+        windows.push_back(w);
+    }
+
+
+    for (int slice_ind = 0; slice_ind <= num_cols_ext - min_t - 1; ++slice_ind) {
+
+
+        std::vector<std::vector<double>> slice_mat(
+                num_rows, std::vector<double>(min_t, 0.0)
+        );
+
+        for (std::size_t r = 0; r < num_rows; ++r) {
+            for (int t = 0; t < min_t; ++t) {
+                slice_mat[r][t] = extended_peaks[r][slice_ind + t];
+            }
+        }
+
+        bool stop = true;
+
+
+        for (int w_idx = 0; w_idx < static_cast<int>(windows.size()); ++w_idx) {
+            int win_ind = windows[w_idx];
+
+            stop = true;
+
+
+            std::vector<int> pr;
+            for (std::size_t r = 0; r < num_rows; ++r) {
+                if (slice_mat[r][win_ind] != 0.0) {
+                    pr.push_back(static_cast<int>(r));
+                }
+            }
+
+
+            if (pr.empty()) {
+
+                break;
+            }
+
+
+            for (int p_idx = 0; p_idx < static_cast<int>(pr.size()); ++p_idx) {
+                int p = pr[p_idx];
+
+                int start_idx = std::max(0, p - delta);
+                int end_idx   = std::min(p + delta + 1, static_cast<int>(num_rows));
+
+                int index_len = end_idx - start_idx;
+                if (index_len <= 0) {
+                    continue;
+                }
+
+                double center_val = slice_mat[p][win_ind];
+
+
+                std::vector<double> peaks1(index_len, center_val);
+                std::vector<double> peaks2(index_len, center_val);
+
+                if (win_ind == 0) {
+
+                    for (int k = 0; k < index_len; ++k) {
+                        int rr = start_idx + k;
+                        peaks1[k] += slice_mat[rr][win_ind + 1];
+                    }
+                } else if (win_ind == min_t - 1) {
+
+                    for (int k = 0; k < index_len; ++k) {
+                        int rr = start_idx + k;
+                        peaks1[k] += slice_mat[rr][win_ind - 1];
+                    }
+                } else {
+
+                    for (int k = 0; k < index_len; ++k) {
+                        int rr = start_idx + k;
+                        peaks1[k] += slice_mat[rr][win_ind - 1];
+                        peaks2[k] += slice_mat[rr][win_ind + 1];
+                    }
+                }
+
+
+                auto any_greater_than_one = [](const std::vector<double>& v) {
+                    for (double val : v) {
+                        if (val > 1.0) return true;
+                    }
+                    return false;
+                };
+
+                bool any1 = any_greater_than_one(peaks1);
+                bool any2 = any_greater_than_one(peaks2);
+
+                if (win_ind == 0 || win_ind == min_t - 1) {
+                    if (any1) {
+                        stop = false;
+                    } else {
+                        slice_mat[p][win_ind] = 0.0;
+                    }
+                } else {
+                    if (any1 && any2) {
+                        stop = false;
+                    } else {
+                        slice_mat[p][win_ind] = 0.0;
+                    }
+                }
+            }
+
+            if (stop) {
+
+                break;
+            }
+
+        }
+
+        if (!stop) {
+
+            for (std::size_t r = 0; r < num_rows; ++r) {
+                for (int t = 0; t < min_t; ++t) {
+                    cont_peaks[r][slice_ind + t] = slice_mat[r][t];
+                }
+            }
+        }
+    }
+
+
+    std::vector<std::vector<double>> cont_trim(
+            num_rows, std::vector<double>(num_cols, 0.0)
+    );
+
+    for (std::size_t r = 0; r < num_rows; ++r) {
+        for (std::size_t c = 0; c < num_cols; ++c) {
+            cont_trim[r][c] = cont_peaks[r][c];
+        }
+    }
+
+    return cont_trim;
+}
+
+
+/*Finds walking cadence from accelerometer data using the prementioned methods
+  input: vm_bout-> vector magnitude in g
+        fs -> sampling frequency in Hz
+        min_amp -> minimum amplitude
+        step_freq -> step frequency range
+        alpha -> maximum ratio between dominant peak below and within
+            step frequency range
+        beta -> maximum ratio between dominant peak above and within
+            step frequency range
+        min_t -> minimum duration of peaks (in seconds)
+        delta -> maximum difference between consecutive peaks
+    returns: vector of walking cadence in Hz for each second of the bout */
+std::vector<double> find_walking(
+        const std::vector<double>& vm_bout,
+        int fs        ,
+        double min_amp ,
+        std::pair<double,double> step_freq ,
+        double alpha  ,
+        double beta   ,
+        int min_t    ,
+        int delta
+) {
+
+    const std::size_t n_seconds = vm_bout.size() / fs;
+
+
+    std::vector<double> pp = get_pp(vm_bout, fs);
+
+    // remove low amplitude seconds
+    std::vector<char> valid(n_seconds, 1);
+    for (std::size_t i = 0; i < n_seconds; ++i) {
+        if (pp[i] < min_amp) {
+            valid[i] = 0;
+        }
+    }
+
+    int sum_valid = std::accumulate(valid.begin(), valid.end(), 0);
+
+
+    std::vector<double> cad(n_seconds, 0.0);
+
+    //continue only if valid fragment is sufficiently long
+    if (sum_valid < min_t) {
+
+        return cad;
+    }
+
+    //trim bout to valid periods only
+    std::vector<double> tapered_bout;
+    tapered_bout.reserve(static_cast<std::size_t>(sum_valid) * fs);
+
+    for (std::size_t sec = 0; sec < n_seconds; ++sec) {
+        if (valid[sec]) {
+            for (int k = 0; k < fs; ++k) {
+                std::size_t idx = sec * fs + k;
+                if (idx < vm_bout.size()) {
+                    tapered_bout.push_back(vm_bout[idx]);
+                }
+            }
+        }
+    }
+
+    //compute  and interpolate CWT
+    CWTResult cwt = compute_interpolate_cwt(tapered_bout, fs);
+    const auto& freqs_interp = cwt.freqs_interp;
+    const auto& coefs_interp = cwt.coefs_interp;
+
+    if (freqs_interp.empty() || coefs_interp.empty()) {
+        return cad;
+    }
+
+
+    auto dp = identify_peaks_in_cwt(freqs_interp, coefs_interp,
+                                    fs, step_freq, alpha, beta);
+
+    std::size_t n_freqs = dp.size();
+    std::size_t n_dp_cols = dp[0].size();
+    std::vector<std::vector<double>> valid_peaks(
+            n_freqs, std::vector<double>(n_seconds, 0.0)
+    );
+
+
+    std::size_t dp_col = 0;
+    for (std::size_t sec = 0; sec < n_seconds && dp_col < n_dp_cols; ++sec) {
+        if (valid[sec]) {
+            for (std::size_t f = 0; f < n_freqs; ++f) {
+                valid_peaks[f][sec] = dp[f][dp_col];
+            }
+            ++dp_col;
+        }
+    }
+
+
+    auto cont_peaks = find_continuous_dominant_peaks(valid_peaks,
+                                                     min_t, delta);
+    //summarize the results
+    for (std::size_t sec = 0; sec < n_seconds; ++sec) {
+        for (std::size_t f = 0; f < n_freqs; ++f) {
+            if (cont_peaks[f][sec] > 0.0) {
+                cad[sec] = freqs_interp[f];
+                break;
+            }
+        }
+    }
+
+    return cad;
+}

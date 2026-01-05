@@ -4,7 +4,8 @@ project("accelerometer")
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
         cadence.cpp
-        fcwt/fCWT/src/fcwt/fcwt.cpp
+        gmw.cpp
+        fcwt/src/fcwt/fcwt.cpp
 )
 
 set(FFTW_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/fftw)
@@ -16,8 +17,9 @@ set_target_properties(fftw3 PROPERTIES
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${FFTW_ROOT}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/fcwt/fCWT/src/fcwt
+        ${CMAKE_CURRENT_SOURCE_DIR}/fcwt/src/fcwt
 )
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE SINGLE_THREAD)
