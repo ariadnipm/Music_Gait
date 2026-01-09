@@ -5,13 +5,11 @@ object Bridge {
         System.loadLibrary("accelerometer")
     }
 
-    external fun fcwtWindowTest(
+    external fun findWalkingDebug(
         tUnixSec: DoubleArray,
         x: DoubleArray,
         y: DoubleArray,
         z: DoubleArray,
-        n: Int,
-        fs: Int,
-        loops: Int
+        n: Int
     ): Int
 }

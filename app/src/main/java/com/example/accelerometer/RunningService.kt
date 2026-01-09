@@ -202,23 +202,11 @@ class RunningService : Service() {
         // (C) UNIX first/last
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
-        // ---- Here is where you will later call C++ safely ----
-        // if (nUnix > 0) {
-        //   val cadence = NativeCadence.compute(outT, outX, outY, outZ, nUnix, fsWin /* or fsEst */)
-        // }
-        // Run FCWT test
-        if ( nUnix > 0) {
-            val ok = Bridge.fcwtWindowTest(
-                tUnixSec = outT,
-                x = outX,
-                y = outY,
-                z = outZ,
-                n = nUnix,
-                fs = 50,      // ή fsWin.roundToInt() αν θες
-                loops = 1
-            )
-            Log.d("FCWT_TEST", "fcwtWindowTest result=$ok")
-        }
+
+        Bridge.findWalkingDebug(outT, outX, outY, outZ, nUnix)
+
+
+
 
     }
 

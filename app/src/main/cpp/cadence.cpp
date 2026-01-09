@@ -3,137 +3,70 @@
 #include <vector>
 #include <cmath>
 #include <complex>
-
-// include fcwt headers (προσαρμόζεις αν το path είναι αλλιώς)
-#include "fcwt.h"   // ή "fcwt/fcwt.h" ανάλογα πως το έχεις στα include dirs
 #include "cadencefun.h"
-#define LOG_TAG "FCWT_TEST"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#include "fcwt.h"
 
-static bool isFiniteAll(const std::vector<float>& v) {
-    for (float x : v) {
-        if (!std::isfinite(x)) return false;
-    }
-    return true;
-}
+
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_example_accelerometer_Bridge_fcwtWindowTest(
+Java_com_example_accelerometer_Bridge_findWalkingDebug(
         JNIEnv* env,
         jobject /*clazz*/,
         jdoubleArray tUnixSec,
         jdoubleArray x,
         jdoubleArray y,
         jdoubleArray z,
-        jint n,
-        jint fs /*not critical here, but keep*/,
-        jint loops /*e.g. 50*/) {
+        jint n
+) {
+    if (!tUnixSec || !x || !y || !z) return 0;
+    if (n < 2) return 0;
 
-    if (!tUnixSec || !x || !y || !z) {
-        LOGE("Null arrays");
-        return 0;
-    }
-    if (n < 64) {
-        LOGE("n too small: %d", n);
-        return 0;
-    }
-
-    // --- Read only first n elements ---
+    // Read arrays
+    jdouble* pt = env->GetDoubleArrayElements(tUnixSec, nullptr);
     jdouble* px = env->GetDoubleArrayElements(x, nullptr);
     jdouble* py = env->GetDoubleArrayElements(y, nullptr);
     jdouble* pz = env->GetDoubleArrayElements(z, nullptr);
-    if (!px || !py || !pz) {
-        LOGE("Failed GetDoubleArrayElements");
-        return 0;
-    }
+    if (!pt || !px || !py || !pz) return 0;
 
-    // Build vector magnitude (vm) as float input for FCWT (matches fftwf float API)
-    std::vector<float> vm;
-    vm.resize((size_t)n);
+    std::vector<double> t((size_t)n), X((size_t)n), Y((size_t)n), Z((size_t)n);
     for (int i = 0; i < n; i++) {
-        double xx = px[i], yy = py[i], zz = pz[i];
-        double mag = std::sqrt(xx*xx + yy*yy + zz*zz);
-        vm[i] = (float)(mag - 1.0);  // like your preprocess does after g-normalize
+        t[(size_t)i] = pt[i];
+        X[(size_t)i] = px[i];
+        Y[(size_t)i] = py[i];
+        Z[(size_t)i] = pz[i];
     }
 
+    env->ReleaseDoubleArrayElements(tUnixSec, pt, JNI_ABORT);
     env->ReleaseDoubleArrayElements(x, px, JNI_ABORT);
     env->ReleaseDoubleArrayElements(y, py, JNI_ABORT);
     env->ReleaseDoubleArrayElements(z, pz, JNI_ABORT);
 
-    if (!isFiniteAll(vm)) {
-        LOGE("vm contains NaN/Inf (skip)");
-        return 0;
-    }
+    // ✅ target fs fixed to 10Hz (algorithm domain)
+    const int fs = 10;
 
-    // --- Minimal FCWT setup (simple, single thread, no OpenMP) ---
-    // Use Morlet just for testing the pipeline; later you’ll swap to your GMW.
-    Morlet wav(2.0f);
-    // scales: fs=50 (or estimated), freq range 0.5..10Hz, 16 scales (safe for test)
-    Scales scales(&wav, SCALETYPE::FCWT_LINFREQS, (int)fs, 0.5f, 10.0f, 16);
+    auto prep = preprocess_bout(t, X, Y, Z, fs);
+    const auto& t_sec = prep.first;
+    const auto& vm    = prep.second;
 
-    // FCWT constructor in your header is:
-    // FCWT(Wavelet *pwav, int pthreads, bool puse_optimalization_schemes, bool puse_normalization)
-    FCWT fcwt(&wav, 1, false, false);
+    if (t_sec.empty() || vm.empty()) return 0;
 
-    const int nSc = scales.nscales;
-    std::vector<std::complex<float>> out;
-    out.resize((size_t)n * (size_t)nSc);
+    // params
+    const double min_amp = 0.3;
+    const std::pair<double,double> step_freq = {1.4, 2.3};
+    const double alpha = 0.6;
+    const double beta  = 2.5;
+    const int min_t = 3;
+    const int delta = 20;
 
-    auto runOnce = [&](float &m0, float &mmid) -> bool {
-        try {
-            fcwt.cwt(vm.data(), n, out.data(), &scales);
-        } catch (...) {
-            LOGE("Exception during fcwt.cwt()");
-            return false;
-        }
-        // pick a couple magnitudes as “signature”
-        int idx0 = 0;
-        int idxMid = (nSc/2) * n + (n/2);
-        auto c0 = out[(size_t)idx0];
-        auto cm = out[(size_t)idxMid];
-        m0   = std::abs(c0);
-        mmid = std::abs(cm);
-        if (!std::isfinite(m0) || !std::isfinite(mmid)) return false;
-        return true;
-    };
+    std::vector<double> cad = find_walking(vm, fs, min_amp, step_freq, alpha, beta, min_t, delta);
 
-    // --- Determinism check (2 runs same input) ---
-    float a0=0, aMid=0, b0=0, bMid=0;
-    if (!runOnce(a0, aMid)) {
-        LOGE("FCWT runOnce #1 failed");
-        return 0;
-    }
-    if (!runOnce(b0, bMid)) {
-        LOGE("FCWT runOnce #2 failed");
-        return 0;
-    }
-
-    float d0   = std::fabs(a0 - b0);
-    float dMid = std::fabs(aMid - bMid);
-
-    // --- Small stress loop ---
-    for (int i = 0; i < loops; i++) {
-        float t0=0, tMid=0;
-        if (!runOnce(t0, tMid)) {
-            LOGE("FCWT loop failed at i=%d", i);
-            return 0;
-        }
-        // occasional log
-        if (i == 0 || i == loops-1) {
-            LOGD("loop i=%d mag0=%.6f magMid=%.6f", i, t0, tMid);
-        }
-    }
-
-    LOGD("FCWT OK | n=%d fs=%d scales=%d | m0=%.6f mMid=%.6f | detDelta=(%.6g, %.6g) loops=%d",
-         n, fs, nSc, a0, aMid, d0, dMid, loops);
-
-    // if determinism deltas are crazy, mark fail
-    // (tiny floating diffs are ok; if it’s big it indicates UB)
-    if (d0 > 1e-3f || dMid > 1e-3f) {
-        LOGE("Determinism suspicious: d0=%.6g dMid=%.6g", d0, dMid);
-        return 0;
+    // log per second
+    int nsec = (int)cad.size();
+    for (int s = 0; s < std::min(nsec, 30); s++) {
+        double ts = (s < (int)t_sec.size()) ? t_sec[(size_t)s] : 0.0;
+        double f  = cad[(size_t)s];
+        __android_log_print(ANDROID_LOG_DEBUG, "WALK_CAD", "sec=%02d t=%.3f cadence=%.4f Hz", s, ts, f);
     }
 
     return 1;

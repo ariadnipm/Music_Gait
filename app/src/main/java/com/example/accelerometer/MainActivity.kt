@@ -18,7 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.example.accelerometer.ui.theme.AccelerometerTheme // <- βάλε το δικό σου theme (ή άλλαξέ το)
+import com.example.accelerometer.ui.theme.AccelerometerTheme
 
 class MainActivity : ComponentActivity() {
 
