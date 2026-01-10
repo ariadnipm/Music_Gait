@@ -42,7 +42,7 @@ Java_com_example_accelerometer_Bridge_findWalkingDebug(
     env->ReleaseDoubleArrayElements(y, py, JNI_ABORT);
     env->ReleaseDoubleArrayElements(z, pz, JNI_ABORT);
 
-    // ✅ target fs fixed to 10Hz (algorithm domain)
+
     const int fs = 10;
 
     auto prep = preprocess_bout(t, X, Y, Z, fs);
