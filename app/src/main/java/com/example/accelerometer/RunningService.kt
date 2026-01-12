@@ -32,8 +32,7 @@ class RunningService : Service() {
     private val sampleCh = Channel<Sample>(capacity = Channel.BUFFERED)
     private var consumerJob: Job? = null
 
-    // ===== Buffers =====
-    // If you’re unsure about max fs bursts, consider 8192 instead of 4096.
+    // Buffers
     private val treal = DoubleArray(8192)
 
     private val tunixA = DoubleArray(8192)
@@ -46,7 +45,7 @@ class RunningService : Service() {
     private val YB     = DoubleArray(8192)
     private val ZB     = DoubleArray(8192)
 
-    // ===== State =====
+    //State
     private val mutex = Mutex()
     private var useA = true
     private var bootToEpoch: Long = 0L
@@ -89,7 +88,7 @@ class RunningService : Service() {
         droppedSamples = 0
         lastWindowEpoch = null
         bootToEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime()
-
+        window.reset()
         // Producer: keep light (NO launch here)
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
             val tMonoMs = timestampNs / 1_000_000L
@@ -101,7 +100,10 @@ class RunningService : Service() {
         consumerJob?.cancel()
         consumerJob = serviceScope.launch {
             for (s in sampleCh) {
-                processSample(s)
+               try{ processSample(s)
+            }
+               catch (t: Throwable) {
+                   Log.e("RUN-SVC", "processSample crashed; keep running", t)}
             }
         }
 
@@ -159,7 +161,7 @@ class RunningService : Service() {
             useA = !useABefore
         }
 
-        // ======= Everything below is OUTSIDE the mutex =======
+        // Everything below is OUTSIDE the mutex
 
         // ---- Hard guards (protect future C++ JNI call) ----
         if (nUnix <= 1) return

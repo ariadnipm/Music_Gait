@@ -104,7 +104,7 @@ std::pair<std::vector<double>, std::vector<double>>  preprocess_bout(
         );
     }
 
-    //standardize measurement to gravity units (g) if its recoreded in m/s²
+    //standardize measurement to gravity units (g) if its recorded in m/s²
     if (!vm_bout_interp.empty()) {
         double mean_vm = std::accumulate(vm_bout_interp.begin(),
                                          vm_bout_interp.end(), 0.0) /
@@ -647,3 +647,70 @@ std::vector<double> find_walking(
 
     return cad;
 }
+
+
+inline double median_confident(
+        const std::vector<double>& cad,
+        int start,
+        int length,
+        double minRatio = 0.30
+) {
+    const int nAll = (int)cad.size();
+    if (nAll == 0 || length <= 0) return 0.0;
+
+    // clamp start
+    if (start < 0) start = 0;
+    if (start >= nAll) return 0.0;
+
+    const int end = std::min(nAll, start + length);
+    const int actualLen = end - start;
+    if (actualLen <= 0) return 0.0;
+
+    std::vector<double> valid;
+    valid.reserve((size_t)actualLen);
+
+    for (int i = start; i < end; ++i) {
+        const double f = cad[(size_t)i];
+        if (f > 0.0) valid.push_back(f);
+    }
+
+    // threshold based on actualLen
+    if ((int)valid.size() < (int)(minRatio * actualLen)) {
+        return 0.0;
+    }
+
+    std::sort(valid.begin(), valid.end());
+    const size_t m = valid.size();
+
+    if ((m % 2) == 0) {
+        return 0.5 * (valid[m/2 - 1] + valid[m/2]);
+    } else {
+        return valid[m/2];
+    }
+}
+
+
+inline double aggregate_window_cadence(
+        const std::vector<double>& cad,
+        int shortLen   // (π.χ. 15)
+) {
+
+    const int n = (int)cad.size();
+    if (n <= 0) return 0.0;
+
+    // first (warm-up) window
+    if (shortLen <= 0 || n <= shortLen) {
+        return median_confident(cad, 0, n);
+    }
+
+    const double cadfull  = median_confident(cad, 0, n);
+    const int startshort  = std::max(0, n - shortLen);
+    const double cadshort = median_confident(cad, startshort, shortLen);
+
+
+    if (cadshort == 0.0) return 0.0;
+    if (cadfull==0.0) return cadshort;
+    return 0.7 * cadshort + 0.3 * cadfull;
+}
+
+

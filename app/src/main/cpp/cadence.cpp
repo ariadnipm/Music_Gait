@@ -36,7 +36,12 @@ Java_com_example_accelerometer_Bridge_findWalkingDebug(
         Y[(size_t)i] = py[i];
         Z[(size_t)i] = pz[i];
     }
-
+    for (size_t i = 1; i < t.size(); ++i) {
+        if (t[i] <= t[i - 1]) {
+            t[i] = t[i - 1] + 1e-3; // +1ms
+            __android_log_print(ANDROID_LOG_WARN, "WALK_CAD", "timestamp repair");
+        }
+    }
     env->ReleaseDoubleArrayElements(tUnixSec, pt, JNI_ABORT);
     env->ReleaseDoubleArrayElements(x, px, JNI_ABORT);
     env->ReleaseDoubleArrayElements(y, py, JNI_ABORT);
@@ -68,6 +73,18 @@ Java_com_example_accelerometer_Bridge_findWalkingDebug(
         double f  = cad[(size_t)s];
         __android_log_print(ANDROID_LOG_DEBUG, "WALK_CAD", "sec=%02d t=%.3f cadence=%.4f Hz", s, ts, f);
     }
+    // aggregate cadence (window-level)
+    double agg = aggregate_window_cadence(cad , /*shortLen=*/15);
+
+// log aggregate result + window size
+    __android_log_print(
+            ANDROID_LOG_INFO,
+            "WALK_CAD",
+            "window_secs=%d agg_cadence=%.4f Hz",
+            (int)cad.size(),
+            agg
+    );
+
 
     return 1;
 }

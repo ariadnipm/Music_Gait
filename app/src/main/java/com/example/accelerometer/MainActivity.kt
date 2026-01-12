@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
                             drawPath(path = path, color = blue)
                         }
 
-                        // Τα κουμπιά σου
+
                         Column(
                             modifier = Modifier.fillMaxSize().padding(horizontal =  24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,

@@ -168,4 +168,12 @@ class SlidingWindow(
         val r = t % step
         return if (r == 0L) t else t + (step - r)
     }
+    fun reset() {
+        head = 0
+        size = 0
+        firstSeenMs = null
+        gridAnchorMs = null
+        nextEdgeMs = null
+    }
+
 }
