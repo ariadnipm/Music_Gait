@@ -5,11 +5,11 @@ object Bridge {
         System.loadLibrary("accelerometer")
     }
 
-    external fun findWalkingDebug(
+    external fun findWalking(
         tUnixSec: DoubleArray,
         x: DoubleArray,
         y: DoubleArray,
         z: DoubleArray,
         n: Int
-    ): Int
+    ): Double
 }

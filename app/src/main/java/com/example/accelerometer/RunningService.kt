@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import java.util.concurrent.atomic.AtomicBoolean
 
 @AndroidEntryPoint
 class RunningService : Service() {
@@ -50,6 +51,7 @@ class RunningService : Service() {
     private var useA = true
     private var bootToEpoch: Long = 0L
     private var running = false
+    private val started = AtomicBoolean(false)
 
     // Debug/metrics
     private var windows = 0
@@ -59,17 +61,39 @@ class RunningService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            Actions.START.toString() -> start()
-            Actions.STOP.toString()  -> stopClean()
-            else -> start()
+        serviceScope.launch {
+            when (intent?.action) {
+                Actions.START.toString() -> {
+
+                    if (started.compareAndSet(false, true)) {
+                        startInternal()
+                    } else {
+                        Log.w("RUN-SVC", "Duplicate START ignored")
+                    }
+                }
+
+                Actions.STOP.toString() -> {
+
+                    if (started.compareAndSet(true, false)) {
+                        stopClean()
+                    } else {
+                        Log.w("RUN-SVC", "STOP ignored (not running)")
+                        stopSelf() // optional
+                    }
+                }
+
+                else -> {
+                    // optional: treat as START
+                    if (started.compareAndSet(false, true)) startInternal()
+                }
+            }
         }
         return START_STICKY
     }
 
-    private fun start() {
-        if (running) return
-        running = true
+
+    private fun startInternal() {
+
 
         val notif = NotificationCompat.Builder(this, "running_channel")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -79,9 +103,7 @@ class RunningService : Service() {
             .build()
         startForeground(1, notif)
 
-
-
-
+        running = true
         // Reset state on each start
         useA = true
         windows = 0
@@ -89,8 +111,13 @@ class RunningService : Service() {
         lastWindowEpoch = null
         bootToEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime()
         window.reset()
+
         // Producer: keep light (NO launch here)
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
+            if (!x.isFinite() || !y.isFinite() || !z.isFinite()) {
+                droppedSamples++
+                return@setOnSensorSampleListener
+            }
             val tMonoMs = timestampNs / 1_000_000L
             val ok = sampleCh.trySend(Sample(tMonoMs, x, y, z)).isSuccess
             if (!ok) droppedSamples++
@@ -205,7 +232,7 @@ class RunningService : Service() {
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
 
-        Bridge.findWalkingDebug(outT, outX, outY, outZ, nUnix)
+       val cadence = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
 
 
 

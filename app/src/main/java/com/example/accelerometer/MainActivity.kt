@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -67,64 +68,27 @@ class MainActivity : ComponentActivity() {
                             .padding(inner)
                     ) {
                         val halfHeight = maxHeight * 0.5f
-                        val blue = Color(0xFFE3F2FD)
+                        val blue = Color(0xCC7D88F3)
+                        var uiRunning by remember { mutableStateOf(false) }
+                        var lastClickMs by remember { mutableLongStateOf(0L) }
 
-                        // Πάνω μισό
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(halfHeight)
-                                .background(blue)
-                                .align(Alignment.TopStart)
-                        )
 
-                        // Wave (κάθεται πάνω στο boundary)
-                        Canvas (
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(120.dp)
-                                .align(Alignment.TopStart)
-                                .offset(y = halfHeight - 60.dp)
-                        ) {
-                            val w = size.width
-                            val h = size.height
-
-                            val path = Path().apply {
-                                // ξεκινάμε από πάνω-αριστερά
-                                moveTo(0f, 0f)
-
-                                // κατεβαίνουμε κοντά στο κύμα
-                                lineTo(0f, h * 0.55f)
-
-                                // κύμα (2 “λοφάκια”)
-                                cubicTo(
-                                    w * 0.2f, h * 0.95f,
-                                    w * 0.25f, h * 0.1f,
-                                    w * 0.50f, h * 0.55f
-                                )
-                                cubicTo(
-                                    w * 0.75f, h * 0.95f,
-                                    w * 0.75f, h * 0.15f,
-                                    w,        h * 0.55f
-                                )
-
-                                // κλείσιμο προς πάνω-δεξιά
-                                lineTo(w, 0f)
-                                close()
-                            }
-
-                            drawPath(path = path, color = blue)
-                        }
 
 
                         Column(
                             modifier = Modifier.fillMaxSize().padding(horizontal =  24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Bottom
+                            verticalArrangement = Arrangement.Center
                         ) {
 
                             Button(
-                                onClick = { startServiceSafe() },
+                                enabled = !uiRunning,
+                                onClick = { val now = SystemClock.elapsedRealtime()
+                                    if (now - lastClickMs < 600L) return@Button
+                                    lastClickMs = now
+
+                                    uiRunning = true
+                                    startServiceSafe() },
                                 modifier = Modifier
                                     .width(200.dp)
                                     .height(50.dp),
@@ -133,13 +97,20 @@ class MainActivity : ComponentActivity() {
                                     containerColor = blue )
 
                             ) {
-                                Text("Start", fontSize = 22.sp)
+                                Text("Start", fontSize = 24.sp)
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Button(
-                                onClick = { stopServiceSafe() },
+                                enabled = uiRunning,
+                                onClick = {
+                                    val now = SystemClock.elapsedRealtime()
+                                    if (now - lastClickMs < 600L) return@Button
+                                    lastClickMs = now
+
+                                    uiRunning = false
+                                    stopServiceSafe() },
                                 modifier = Modifier
                                     .width(200.dp)
                                     .height(50.dp),
@@ -148,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                     containerColor = blue
                                     )
                             ) {
-                                Text("Stop", fontSize = 22.sp)
+                                Text("Stop", fontSize = 24.sp)
                             }
 
                             Spacer(modifier = Modifier.height(28.dp))
