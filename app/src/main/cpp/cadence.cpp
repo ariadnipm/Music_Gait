@@ -75,7 +75,7 @@ Java_com_example_accelerometer_Bridge_findWalking(
     double cadence = aggregate_window_cadence(cad, /*shortLen=*/15);
 
     __android_log_print(ANDROID_LOG_INFO, "WALK_CAD",
-                        "window_secs=%d agg_cadence=%.4f Hz",
+                        "window_secs=%d agg_cadence=%.2f Hz",
                         (int)cad.size(), cadence);
 
     return (jdouble)cadence;

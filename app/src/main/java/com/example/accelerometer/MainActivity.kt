@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
+                            CadenceUI(
+                                modifier = Modifier.padding(bottom = 24.dp)
+                            )
 
                             Button(
                                 enabled = !uiRunning,
@@ -88,6 +91,7 @@ class MainActivity : ComponentActivity() {
                                     lastClickMs = now
 
                                     uiRunning = true
+                                    CadenceState.setRunning(true)
                                     startServiceSafe() },
                                 modifier = Modifier
                                     .width(200.dp)
@@ -110,6 +114,7 @@ class MainActivity : ComponentActivity() {
                                     lastClickMs = now
 
                                     uiRunning = false
+                                    CadenceState.setRunning(false)
                                     stopServiceSafe() },
                                 modifier = Modifier
                                     .width(200.dp)

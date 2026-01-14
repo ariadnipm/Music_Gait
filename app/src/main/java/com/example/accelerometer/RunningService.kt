@@ -101,8 +101,9 @@ class RunningService : Service() {
             .setContentText("Collecting data…")
             .setOngoing(true)
             .build()
+        Log.e("Clock", "About to start service...")
         startForeground(1, notif)
-
+        Log.e("Clock", "Started...")
         running = true
         // Reset state on each start
         useA = true
@@ -135,6 +136,7 @@ class RunningService : Service() {
         }
 
         accelerometer.startListening()
+
     }
 
     private suspend fun processSample(s: Sample) {
@@ -231,8 +233,14 @@ class RunningService : Service() {
         // (C) UNIX first/last
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
+        Log.e("Clock", "Find Walking")
+        val cadenceHz = Bridge.findWalking(outT, outX, outY, outZ, nUnix)  // πρέπει να επιστρέφει Double
+        val isWalking = cadenceHz >= 1.2
 
-       val cadence = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
+        CadenceState.updateCadence(
+            cadenceHz = cadenceHz,
+            isWalking = isWalking
+        )
 
 
 
@@ -241,6 +249,7 @@ class RunningService : Service() {
 
     private fun stopClean() {
         running = false
+
 
         try { accelerometer.stopListening() } catch (_: Throwable) {}
 
