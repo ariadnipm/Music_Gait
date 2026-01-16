@@ -6,6 +6,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         cadence.cpp
         gmw.cpp
         fcwt/src/fcwt/fcwt.cpp
+        music.cpp
 )
 
 set(FFTW_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/fftw)
@@ -23,10 +24,13 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE SINGLE_THREAD)
-
+find_package(oboe REQUIRED CONFIG)
 target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         log
         m
         fftw3
+        oboe::oboe
 )
+
+

@@ -12,4 +12,6 @@ object Bridge {
         z: DoubleArray,
         n: Int
     ): Double
+
+    external fun nativeOboeTest(): Int
 }

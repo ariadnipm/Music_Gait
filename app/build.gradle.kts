@@ -24,6 +24,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += ""
+                arguments("-DANDROID_STL=c++_shared")
             }
         }
 
@@ -51,6 +52,7 @@ android {
     }
     buildFeatures {
         compose = true
+        prefab = true
     }
     externalNativeBuild {
         cmake {
@@ -78,5 +80,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.hilt.android)
     kapt(libs.hilt.compiler)
-
+    implementation("com.google.oboe:oboe:1.10.0")
 }

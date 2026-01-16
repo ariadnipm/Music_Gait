@@ -241,6 +241,9 @@ class RunningService : Service() {
             cadenceHz = cadenceHz,
             isWalking = isWalking
         )
+        val r = Bridge.nativeOboeTest()
+        Log.d("JNI", "nativeOboeTest returned $r")
+
 
 
 
