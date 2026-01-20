@@ -13,5 +13,7 @@ object Bridge {
         n: Int
     ): Double
 
-    external fun nativeOboeTest(): Int
+    external fun startAudio(): Int
+    external fun stopAudio(): Int
+    external fun setCadenceHz(cadenceHz: Float)
 }

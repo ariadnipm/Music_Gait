@@ -7,6 +7,8 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         gmw.cpp
         fcwt/src/fcwt/fcwt.cpp
         music.cpp
+        AudioEngine.cpp
+        AudioCallback.cpp
 )
 
 set(FFTW_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/fftw)
