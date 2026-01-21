@@ -24,7 +24,7 @@ Java_com_example_accelerometer_Bridge_stopAudio(JNIEnv* /*env*/, jobject /*thiz*
 // void setCadenceHz(float)
 JNIEXPORT void JNICALL
 Java_com_example_accelerometer_Bridge_setCadenceHz(JNIEnv* /*env*/, jobject /*thiz*/, jfloat cadenceHz) {
-    gEngine.setCadence(static_cast<float>(cadenceHz));
+    gEngine.setCadenceHz(static_cast<float>(cadenceHz));
 }
 
 } // extern "C"

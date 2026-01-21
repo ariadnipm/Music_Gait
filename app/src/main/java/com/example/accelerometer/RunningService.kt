@@ -104,6 +104,11 @@ class RunningService : Service() {
         Log.e("Clock", "About to start service...")
         startForeground(1, notif)
         Log.e("Clock", "Started...")
+        //Oboe implementaion
+        val ar = Bridge.startAudio()
+        Log.d("RUN-SVC", "startAudio() -> $ar")
+        Bridge.setCadenceHz(0f)
+
         running = true
         // Reset state on each start
         useA = true
@@ -236,7 +241,7 @@ class RunningService : Service() {
         Log.e("Clock", "Find Walking")
         val cadenceHz = Bridge.findWalking(outT, outX, outY, outZ, nUnix)  // πρέπει να επιστρέφει Double
         val isWalking = cadenceHz >= 1.2
-
+        Bridge.setCadenceHz(cadenceHz.toFloat())
         CadenceState.updateCadence(
             cadenceHz = cadenceHz,
             isWalking = isWalking
@@ -250,7 +255,8 @@ class RunningService : Service() {
 
     private fun stopClean() {
         running = false
-
+        val sr = Bridge.stopAudio()
+        Log.d("RUN-SVC", "stopAudio() -> $sr")
 
         try { accelerometer.stopListening() } catch (_: Throwable) {}
 

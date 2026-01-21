@@ -15,7 +15,6 @@ namespace mg::audio {
         AudioCallback(std::shared_ptr<AudioSource> source,
                       std::atomic<float>& cadenceHzRef);
 
-
         void prepareStream(int32_t sampleRate, int32_t channelCount);
 
         oboe::DataCallbackResult onAudioReady(oboe::AudioStream* audioStream,
@@ -30,4 +29,4 @@ namespace mg::audio {
         int32_t channelCount_ = 0;
     };
 
-}
+} // namespace mg::audio

@@ -1,51 +1,56 @@
 #include "AudioEngine.h"
 
 #include <oboe/Oboe.h>
-#include <cstring>   // std::memset
 #include <memory>
-#include <utility>   // std::move
+#include <utility>
 
 #include "AudioCallback.h"
-#include "AudioSource.h"
+#include "SineSource.h"
+
+// ====== LOGGING ======
+#include <android/log.h>
+
+#define MG_TAG "MG_AudioEngine"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  MG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  MG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, MG_TAG, __VA_ARGS__)
 
 namespace mg::audio {
 
-
-    class SilenceSource final : public AudioSource {
-    public:
-        void prepare(int32_t /*sampleRate*/, int32_t /*channelCount*/) override {
-
-        }
-
-        void render(float* out, int32_t numFrames, float /*cadenceHz*/) override {
-            std::memset(out, 0, sizeof(float) * static_cast<size_t>(numFrames));
-        }
-
-        void reset() override {
-
-        }
-    };
+    static int toInt(oboe::Result r) { return static_cast<int>(r); }
+    static const char* stateText(oboe::StreamState s) { return oboe::convertToText(s); }
 
 
-    static int toInt(oboe::Result r) {
-        return static_cast<int>(r);
+    static int getXrunCountSafe(oboe::AudioStream* s) {
+        if (!s) return -1;
+        auto res = s->getXRunCount();
+        if (res) return static_cast<int>(res.value());
+        return -1;
     }
 
     AudioEngine::AudioEngine() = default;
 
     AudioEngine::~AudioEngine() {
-
+        LOGI("~AudioEngine(): stop()");
         stop();
     }
 
     int AudioEngine::start() {
+        LOGI("start(): called (stream_=%s) cadenceHz=%.3f",
+             stream_ ? "NON-NULL" : "NULL",
+             cadenceHz_.load(std::memory_order_relaxed));
 
         if (stream_) {
-            return toInt(stream_->requestStart());
+            LOGW("start(): stream already exists. state(before)=%s", stateText(stream_->getState()));
+            oboe::Result r = stream_->requestStart();
+            LOGI("start(): requestStart(existing) -> %s (%d), state(after)=%s",
+                 oboe::convertToText(r), toInt(r), stateText(stream_->getState()));
+            return toInt(r);
         }
-        auto source = std::make_shared<SilenceSource>();
-        auto cb = std::make_shared<AudioCallback>(source, cadenceHz_);
 
+        // ====== SOURCE: Sine tone ======
+        auto source = std::make_shared<SineSource>(220.0f, 0.15f);
+        auto cb = std::make_shared<AudioCallback>(source, cadenceHz_);
 
         oboe::AudioStreamBuilder builder;
         builder.setDirection(oboe::Direction::Output);
@@ -55,54 +60,104 @@ namespace mg::audio {
         builder.setSharingMode(oboe::SharingMode::Exclusive);
         builder.setDataCallback(cb.get());
 
-
+        LOGI("start(): builder config: dir=Output fmt=Float ch=Mono perf=LowLatency share=Exclusive dataCb=%p",
+             cb.get());
 
         std::shared_ptr<oboe::AudioStream> openedStream;
         oboe::Result r = builder.openStream(openedStream);
+
+        LOGI("start(): openStream -> %s (%d), openedStream=%s",
+             oboe::convertToText(r), toInt(r), openedStream ? "OK" : "NULL");
+
         if (r != oboe::Result::OK || !openedStream) {
+            LOGE("start(): FAILED to open stream. result=%s (%d)",
+                 oboe::convertToText(r), toInt(r));
             return toInt(r);
         }
+
+        LOGI("start(): opened stream props: sr=%d ch=%d fmt=%s perf=%d share=%d "
+             "framesPerBurst=%d bufferCapacity=%d bufferSize=%d xRunCount=%d deviceId=%d",
+             openedStream->getSampleRate(),
+             openedStream->getChannelCount(),
+             oboe::convertToText(openedStream->getFormat()),
+             (int)openedStream->getPerformanceMode(),
+             (int)openedStream->getSharingMode(),
+             openedStream->getFramesPerBurst(),
+             openedStream->getBufferCapacityInFrames(),
+             openedStream->getBufferSizeInFrames(),
+             getXrunCountSafe(openedStream.get()),
+             openedStream->getDeviceId());
+
         const int32_t sr = openedStream->getSampleRate();
         const int32_t ch = openedStream->getChannelCount();
-
+        LOGI("start(): preparing callback with sr=%d ch=%d", sr, ch);
         cb->prepareStream(sr, ch);
 
-
+        LOGI("start(): state(before start)=%s", stateText(openedStream->getState()));
         r = openedStream->requestStart();
+        LOGI("start(): requestStart(new) -> %s (%d), state(after)=%s",
+             oboe::convertToText(r), toInt(r), stateText(openedStream->getState()));
+
         if (r != oboe::Result::OK) {
+            LOGE("start(): requestStart FAILED -> %s (%d). Closing stream.",
+                 oboe::convertToText(r), toInt(r));
             openedStream->close();
             return toInt(r);
         }
+
         stream_ = std::move(openedStream);
         callback_ = std::move(cb);
 
+        LOGI("start(): SUCCESS stream_=%p callback_=%p", stream_.get(), callback_.get());
         return toInt(oboe::Result::OK);
     }
 
     int AudioEngine::stop() {
+        LOGI("stop(): called (stream_=%s callback_=%s)",
+             stream_ ? "NON-NULL" : "NULL",
+             callback_ ? "NON-NULL" : "NULL");
+
         int result = toInt(oboe::Result::OK);
 
         if (stream_) {
-            oboe::Result r = stream_->requestStop();
-            if (r != oboe::Result::OK) {
-                result = toInt(r);
-            }
-            r = stream_->close();
-            if (r != oboe::Result::OK) {
-                result = toInt(r);
-            }
-            stream_.reset();
-        }
-        callback_.reset();
+            LOGI("stop(): state(before stop)=%s xRunCount=%d bufferSize=%d",
+                 stateText(stream_->getState()),
+                 getXrunCountSafe(stream_.get()),
+                 stream_->getBufferSizeInFrames());
 
+            oboe::Result r = stream_->requestStop();
+            LOGI("stop(): requestStop -> %s (%d), state(after)=%s",
+                 oboe::convertToText(r), toInt(r), stateText(stream_->getState()));
+            if (r != oboe::Result::OK) result = toInt(r);
+
+            r = stream_->close();
+            LOGI("stop(): close -> %s (%d)", oboe::convertToText(r), toInt(r));
+            if (r != oboe::Result::OK) result = toInt(r);
+
+            LOGI("stop(): resetting stream_");
+            stream_.reset();
+        } else {
+            LOGW("stop(): stream_ already NULL");
+        }
+
+        if (callback_) {
+            LOGI("stop(): resetting callback_");
+            callback_.reset();
+        } else {
+            LOGW("stop(): callback_ already NULL");
+        }
+
+        LOGI("stop(): done result=%d", result);
         return result;
     }
 
-    void AudioEngine::setCadence(float cadenceHz) {
+    void AudioEngine::setCadenceHz(float cadenceHz) {
+        float old = cadenceHz_.load(std::memory_order_relaxed);
         cadenceHz_.store(cadenceHz, std::memory_order_relaxed);
+        LOGI("setCadenceHz(): %.3f -> %.3f", old, cadenceHz);
     }
 
-    float AudioEngine::getCadence() const {
+    float AudioEngine::getCadenceHz() const {
         return cadenceHz_.load(std::memory_order_relaxed);
     }
 
