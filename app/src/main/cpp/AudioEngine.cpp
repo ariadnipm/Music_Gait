@@ -5,7 +5,8 @@
 #include <utility>
 
 #include "AudioCallback.h"
-#include "SineSource.h"
+#include <vector>
+#include "PianoSequenceSource.h"
 
 // ====== LOGGING ======
 #include <android/log.h>
@@ -48,8 +49,47 @@ namespace mg::audio {
             return toInt(r);
         }
 
-        // ====== SOURCE: Sine tone ======
-        auto source = std::make_shared<SineSource>(220.0f, 0.15f);
+        auto notes = std::vector<float>{
+                220.00f,  // A
+                261.63f,  // C
+                293.66f,  // D
+                329.63f,  // E
+                392.00f   // G
+        };
+
+        mg::audio::PianoSequenceSource::Params params;
+
+
+        params.baseGain = 0.40f;
+
+        params.attackSec = 0.004f;
+        params.decayFundSec = 0.35f;
+        params.decayBrightSec = 0.08f;
+
+        params.hammerNoise = 0.055f;
+        params.hammerSec   = 0.015f;
+        params.detune       = 0.003f;
+
+        params.h2 = 0.22f;
+        params.h3 = 0.10f;
+        params.transientBrightness = 0.75f;
+
+
+        params.defaultCadenceHzWhenZero = 2.0f;
+        params.defaultMacroDbWhenZero   = -14.0f;
+
+
+        params.cadenceMinForMacro = 1.2f;
+        params.cadenceMaxForMacro = 3.2f;
+
+
+        params.macroDbMin = -20.0f;
+        params.macroDbMax = -6.0f;
+
+
+        params.macroSmoothing = 0.04f;
+
+        auto source = std::make_shared<mg::audio::PianoSequenceSource>(notes, params);
         auto cb = std::make_shared<AudioCallback>(source, cadenceHz_);
 
         oboe::AudioStreamBuilder builder;

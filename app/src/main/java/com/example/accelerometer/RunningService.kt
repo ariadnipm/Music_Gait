@@ -104,7 +104,7 @@ class RunningService : Service() {
         Log.e("Clock", "About to start service...")
         startForeground(1, notif)
         Log.e("Clock", "Started...")
-        //Oboe implementaion
+        //Oboe implementation
         val ar = Bridge.startAudio()
         Log.d("RUN-SVC", "startAudio() -> $ar")
         Bridge.setCadenceHz(0f)
