@@ -4,7 +4,7 @@
 #include "fcwt.h"
 #include <complex>
 
-/* Generalized Morse Wavelet (order 0, bandpass-normalized)
+/* Generalized Morse Wavelet (bandpass-normalized)
 
  */
 class GeneralizedMorse : public Wavelet {

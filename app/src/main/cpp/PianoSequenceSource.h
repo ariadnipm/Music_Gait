@@ -13,27 +13,20 @@ namespace mg::audio {
     public:
         struct Params {
             float attackSec;
-
             float decayFundSec;
             float decayBrightSec;
-
             float baseGain;
 
             // Macro intensity mapping from cadence
             float cadenceMinForMacro;
             float cadenceMaxForMacro;
-
-
             float macroDbMin;
             float macroDbMax;
 
             // Smoothing for macro gain
             float macroSmoothing;
-
-
             float defaultCadenceHzWhenZero; // tempo fallback
             float defaultMacroDbWhenZero;   // loudness fallback in dB
-
             bool loopForward;
 
             float h2;
@@ -136,11 +129,7 @@ namespace mg::audio {
             }
 
             const float targetCad = std::max(0.0f, cadenceHz);
-
-
             float cadForTiming = 0.0f;
-
-
             float macroTargetAmp = 0.0f;
 
             if (targetCad < 0.0001f) {

@@ -83,7 +83,7 @@ class RunningService : Service() {
                 }
 
                 else -> {
-                    // optional: treat as START
+
                     if (started.compareAndSet(false, true)) startInternal()
                 }
             }
@@ -118,7 +118,7 @@ class RunningService : Service() {
         bootToEpoch = System.currentTimeMillis() - SystemClock.elapsedRealtime()
         window.reset()
 
-        // Producer: keep light (NO launch here)
+        // Producer: (NO launch here)
         accelerometer.setOnSensorSampleListener { timestampNs, x, y, z ->
             if (!x.isFinite() || !y.isFinite() || !z.isFinite()) {
                 droppedSamples++
@@ -159,7 +159,7 @@ class RunningService : Service() {
         var tEndRel = 0.0
         var spanRel = 0.0
 
-        // Only for window-to-window delta in monotonic timebase (ms)
+
         var emitMonoMs: Long? = null
 
         mutex.withLock {
@@ -195,9 +195,9 @@ class RunningService : Service() {
             useA = !useABefore
         }
 
-        // Everything below is OUTSIDE the mutex
+        // Everything below is outside the mutex
 
-        // ---- Hard guards (protect future C++ JNI call) ----
+
         if (nUnix <= 1) return
         if (nUnix > outT.size || nUnix > outX.size || nUnix > outY.size || nUnix > outZ.size) {
             Log.e("WIN-ERR", "OVERFLOW nUnix=$nUnix cap=${outT.size}")
@@ -212,30 +212,30 @@ class RunningService : Service() {
             return
         }
 
-        // ---- Core sanity metrics from the WINDOW itself (fsWin) ----
+
         val spanSec = outT[nUnix - 1] - outT[0]
         val fsWin = if (spanSec > 0.0) (nUnix - 1) / spanSec else 0.0
 
-        // ---- Emit interval check (target ~15s) using UNIX epoch seconds ----
+
         val nowEpoch = outT[nUnix - 1]
         val emitDtSec = lastWindowEpoch?.let { nowEpoch - it } ?: 0.0
         lastWindowEpoch = nowEpoch
 
-        // ---- Logging (you already have logs; these are the extra “proof” logs) ----
+
         windows++
 
-        // (A) Window-level summary (span/fs/n)
+
         Log.e(
             "SW",
             "win#$windows nUnix=$nUnix spanSec=${"%.3f".format(spanSec)} fsWin=${"%.2f".format(fsWin)} estFs=${"%.2f".format(fsEst)} emitDt=${"%.2f".format(emitDtSec)}s dropped=$droppedSamples"
         )
 
-        // (B) Keep your existing logs (optional)
+
         if (nRel > 0) {
             Log.d("SW", "REL n=$nRel span≈${"%.3f".format(spanRel)}s X0=${"%.4f".format(outX[0])} XN=${"%.4f".format(outX[nRel - 1])}")
         }
 
-        // (C) UNIX first/last
+
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
         Log.e("Clock", "Find Walking")

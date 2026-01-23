@@ -50,11 +50,11 @@ namespace mg::audio {
         }
 
         auto notes = std::vector<float>{
-                220.00f,  // A
-                261.63f,  // C
-                293.66f,  // D
-                329.63f,  // E
-                392.00f   // G
+                369.99f,  // F#4
+                392.00f,  // G4
+                311.13f,  // Eb4
+                329.63f,  // E4
+                246.94f   // B3
         };
 
         mg::audio::PianoSequenceSource::Params params;
@@ -79,8 +79,8 @@ namespace mg::audio {
         params.defaultMacroDbWhenZero   = -14.0f;
 
 
-        params.cadenceMinForMacro = 1.2f;
-        params.cadenceMaxForMacro = 3.2f;
+        params.cadenceMinForMacro = 1.4f;
+        params.cadenceMaxForMacro = 2.3f;
 
 
         params.macroDbMin = -20.0f;
