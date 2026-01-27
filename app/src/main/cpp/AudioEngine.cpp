@@ -66,8 +66,8 @@ namespace mg::audio {
         params.decayFundSec = 0.35f;
         params.decayBrightSec = 0.08f;
 
-        params.hammerNoise = 0.055f;
-        params.hammerSec   = 0.015f;
+        params.hammerNoise = 0.035f;
+        params.hammerSec   = 0.008f;
         params.detune       = 0.003f;
 
         params.h2 = 0.22f;
@@ -75,8 +75,8 @@ namespace mg::audio {
         params.transientBrightness = 0.75f;
 
 
-        params.defaultCadenceHzWhenZero = 2.0f;
-        params.defaultMacroDbWhenZero   = -14.0f;
+        params.defaultCadenceHzWhenZero = 1.7f;
+        params.defaultMacroDbWhenZero   = -16.0f;
 
 
         params.cadenceMinForMacro = 1.4f;

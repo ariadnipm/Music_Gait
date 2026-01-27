@@ -49,12 +49,19 @@ class SlidingWindow(
         val span = if (size > 1) lastTimeMs() - firstTimeMs() else 0L
         if (span < minEmit) return false
 
-
+        //CHANGE TO SEE THE PROBLEM
         if (nextEdgeMs == null) {
-            val firstTarget = firstSeenMs!! + minEmit
-            gridAnchorMs = ceilToGrid(firstTarget, step)
-            nextEdgeMs = gridAnchorMs
+            val fs = firstSeenMs ?: return false
+            val firstTarget = fs + minEmit
+
+            android.util.Log.d(
+                "SlidingWindow",
+                "INIT EMIT  | firstTarget=${firstTarget - fs}ms(after start)"
+            )
+
+            nextEdgeMs = firstTarget
         }
+
 
         if (tMs >= nextEdgeMs!!) {
             do { nextEdgeMs = nextEdgeMs!! + step } while (nextEdgeMs!! <= tMs)

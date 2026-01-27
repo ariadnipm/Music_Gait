@@ -239,7 +239,7 @@ class RunningService : Service() {
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
         Log.e("Clock", "Find Walking")
-        val cadenceHz = Bridge.findWalking(outT, outX, outY, outZ, nUnix)  // πρέπει να επιστρέφει Double
+        val cadenceHz = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
         val isWalking = cadenceHz >= 1.2
         Bridge.setCadenceHz(cadenceHz.toFloat())
         CadenceState.updateCadence(
@@ -263,7 +263,7 @@ class RunningService : Service() {
         consumerJob?.cancel()
         consumerJob = null
 
-        // Drain queued samples so next START begins “clean”
+        // Drain queued samples so next START begins clean
         drainChannel()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

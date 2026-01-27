@@ -46,16 +46,12 @@ namespace mg::audio {
                       cadenceMinForMacro(1.2f),
                       cadenceMaxForMacro(3.2f),
 
-
                       macroDbMin(-18.0f),
                       macroDbMax(-6.0f),
-
-
                       macroSmoothing(0.03f),
 
-
-                      defaultCadenceHzWhenZero(2.0f),
-                      defaultMacroDbWhenZero(-14.0f),
+                      defaultCadenceHzWhenZero(1.7f),
+                      defaultMacroDbWhenZero(-16.0f),
 
                       loopForward(true),
 
@@ -63,8 +59,8 @@ namespace mg::audio {
                       h3(0.10f),
                       transientBrightness(0.75f),
 
-                      hammerNoise(0.05f),
-                      hammerSec(0.015f),
+                      hammerNoise(0.035f),
+                      hammerSec(0.008f),
                       detune(0.003f) {}
         };
 
@@ -107,15 +103,12 @@ namespace mg::audio {
         void reset() override {
             phase_ = 0.0f;
             phase2_ = 0.0f;
-
             beatPhase_ = 0.95f;
 
             // Start macro gain at default  level
             macroGain_ = dbToAmp_(p_.defaultMacroDbWhenZero);
-
             noteIndex_ = 0;
             currentFreqHz_ = notesHz_.empty() ? 0.0f : notesHz_[0];
-
             envPos_ = 999999;
             rng_ = 0x12345678u;
         }
@@ -140,7 +133,7 @@ namespace mg::audio {
                 macroTargetAmp = cadenceToMacroAmp_(targetCad);
             }
 
-            // Smoothing only on macro gain (more natural)
+            // Smoothing only on macro gain for a more natural effect
             macroGain_ += p_.macroSmoothing * (macroTargetAmp - macroGain_);
 
             const float twoPi = 6.283185307179586f;

@@ -25,7 +25,7 @@ object CadenceState {
     /** Called from UI when user starts/stops the service */
     fun setRunning(running: Boolean) {
         if (!running) {
-            // STOP => hard reset to 0.0 (what you wanted)
+
             _state.value = UiCadenceState(cadenceHz = 0.0, isWalking = false, isRunning = false)
         } else {
             _state.value = _state.value.copy(isRunning = true)
