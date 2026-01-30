@@ -81,4 +81,6 @@ dependencies {
     implementation(libs.hilt.android)
     kapt(libs.hilt.compiler)
     implementation("com.google.oboe:oboe:1.10.0")
+    implementation(libs.material.icons.extended)
+
 }

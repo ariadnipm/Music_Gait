@@ -105,13 +105,15 @@ namespace mg::audio {
             phase2_ = 0.0f;
             beatPhase_ = 0.95f;
 
-            // Start macro gain at default  level
             macroGain_ = dbToAmp_(p_.defaultMacroDbWhenZero);
-            noteIndex_ = 0;
+
+            noteIndex_ = -1;
             currentFreqHz_ = notesHz_.empty() ? 0.0f : notesHz_[0];
+
             envPos_ = 999999;
             rng_ = 0x12345678u;
         }
+
 
         void render(float* out, int32_t numFrames, float cadenceHz) override {
             if (!out || numFrames <= 0 || channelCount_ <= 0 || sampleRate_ <= 0) return;
