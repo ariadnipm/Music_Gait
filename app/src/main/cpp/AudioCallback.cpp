@@ -15,7 +15,7 @@ namespace mg::audio {
                                  std::atomic<float>& cadenceHzRef)
             : source_(std::move(source)),
               cadenceHz_(cadenceHzRef) {
-        CBI("ctor: source=%p cadenceRef=%p", source_.get(), &cadenceHz_);
+      //  CBI("ctor: source=%p cadenceRef=%p", source_.get(), &cadenceHz_);
     }
 
     void AudioCallback::prepareStream(int32_t sampleRate, int32_t channelCount) {

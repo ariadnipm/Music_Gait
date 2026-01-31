@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace mg::audio {
- /*This class produces the sound  to be played on the app */
+    /*This class produces the sound to be played on the app */
     class PianoSequenceSource final : public AudioSource {
     public:
         struct Params {
@@ -25,8 +25,8 @@ namespace mg::audio {
 
             // Smoothing for macro gain
             float macroSmoothing;
-            float defaultCadenceHzWhenZero; // tempo fallback
-            float defaultMacroDbWhenZero;   // loudness fallback in dB
+            float defaultCadenceHzWhenZero;
+            float defaultMacroDbWhenZero;
             bool loopForward;
 
             float h2;
@@ -112,8 +112,11 @@ namespace mg::audio {
 
             envPos_ = 999999;
             rng_ = 0x12345678u;
-        }
 
+
+            dc_x1_ = 0.0f;
+            dc_y1_ = 0.0f;
+        }
 
         void render(float* out, int32_t numFrames, float cadenceHz) override {
             if (!out || numFrames <= 0 || channelCount_ <= 0 || sampleRate_ <= 0) return;
@@ -192,6 +195,9 @@ namespace mg::audio {
 
                 float sample = p_.baseGain * macroGain_ * envFund * s;
 
+
+                sample = dcBlock_(sample);
+
                 for (int c = 0; c < channelCount_; ++c) {
                     out[idx++] = sample;
                 }
@@ -219,10 +225,14 @@ namespace mg::audio {
 
         int envPos_ = 999999;
 
-        // Only macro gain is smoothed now
+
         float macroGain_ = 0.5f;
 
         uint32_t rng_ = 0x12345678u;
+
+
+        float dc_x1_ = 0.0f;
+        float dc_y1_ = 0.0f;
 
     private:
         void sanitizeNotes_() {
@@ -240,10 +250,12 @@ namespace mg::audio {
 
             if (notesHz_.empty()) return;
 
+
             if (p_.loopForward) {
                 noteIndex_ = (noteIndex_ + 1) % static_cast<int>(notesHz_.size());
             } else {
-                noteIndex_ = (noteIndex_ + 1) % static_cast<int>(notesHz_.size());
+                noteIndex_ = (noteIndex_ - 1);
+                if (noteIndex_ < 0) noteIndex_ = static_cast<int>(notesHz_.size()) - 1;
             }
 
             currentFreqHz_ = notesHz_[noteIndex_];
@@ -284,6 +296,15 @@ namespace mg::audio {
 
         static float dbToAmp_(float db) {
             return std::pow(10.0f, db / 20.0f);
+        }
+
+
+        float dcBlock_(float x) {
+            constexpr float R = 0.995f;
+            float y = x - dc_x1_ + R * dc_y1_;
+            dc_x1_ = x;
+            dc_y1_ = y;
+            return y;
         }
 
         float cadenceToMacroAmp_(float cadHz) const {

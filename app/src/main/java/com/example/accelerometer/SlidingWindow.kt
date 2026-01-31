@@ -49,7 +49,7 @@ class SlidingWindow(
         val span = if (size > 1) lastTimeMs() - firstTimeMs() else 0L
         if (span < minEmit) return false
 
-        //CHANGE TO SEE THE PROBLEM
+
         if (nextEdgeMs == null) {
             val fs = firstSeenMs ?: return false
             val firstTarget = fs + minEmit

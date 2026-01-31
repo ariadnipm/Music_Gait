@@ -48,7 +48,6 @@ namespace mg::audio {
                  oboe::convertToText(r), toInt(r), stateText(stream_->getState()));
             return toInt(r);
         }
-
         auto notes = std::vector<float>{
                 293.66f, // D4
                 329.63f, // E4
@@ -66,28 +65,27 @@ namespace mg::audio {
         params.decayFundSec = 0.35f;
         params.decayBrightSec = 0.08f;
 
-        params.hammerNoise = 0.035f;
+        params.hammerNoise = 0.0f;
         params.hammerSec   = 0.008f;
-        params.detune       = 0.003f;
+        params.detune       = 0.0015f;
 
         params.h2 = 0.22f;
         params.h3 = 0.10f;
-        params.transientBrightness = 0.75f;
-
+        params.transientBrightness = 0.60f;
 
         params.defaultCadenceHzWhenZero = 1.6f;
-        params.defaultMacroDbWhenZero   = -14.0f;
+        params.defaultMacroDbWhenZero   = -16.0f;
 
 
         params.cadenceMinForMacro = 1.4f;
         params.cadenceMaxForMacro = 2.3f;
 
 
-        params.macroDbMin = -16.0f;
-        params.macroDbMax = -5.0f;
+        params.macroDbMin = -18.0f;
+        params.macroDbMax = -8.0f;
 
 
-        params.macroSmoothing = 0.04f;
+        params.macroSmoothing = 0.02f;
 
         auto source = std::make_shared<mg::audio::PianoSequenceSource>(notes, params);
         auto cb = std::make_shared<AudioCallback>(source, cadenceHz_);

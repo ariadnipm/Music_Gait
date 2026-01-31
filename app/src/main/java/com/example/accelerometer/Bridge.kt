@@ -11,7 +11,7 @@ object Bridge {
         y: DoubleArray,
         z: DoubleArray,
         n: Int
-    ): Double
+    ): DoubleArray
 
     external fun startAudio(): Int
     external fun stopAudio(): Int

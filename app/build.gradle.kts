@@ -82,5 +82,5 @@ dependencies {
     kapt(libs.hilt.compiler)
     implementation("com.google.oboe:oboe:1.10.0")
     implementation(libs.material.icons.extended)
-
+    implementation("com.google.code.gson:gson:2.13.2")
 }

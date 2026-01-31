@@ -21,15 +21,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 @AndroidEntryPoint
 class RunningService : Service() {
 
-    enum class Actions { START, STOP }
+    enum class Actions { START, STOP, RECORD_START, RECORD_STOP }
 
     @Inject lateinit var accelerometer: MeasurableSensor
     @Inject lateinit var serviceScope: CoroutineScope
     @Inject lateinit var window: SlidingWindow
 
     data class Sample(val tMonoMs: Long, val x: Float, val y: Float, val z: Float)
+    private lateinit var recordSession: RecordSession
 
-    // ===== Channel pipeline =====
+    // Channel pipeline
     private val sampleCh = Channel<Sample>(capacity = Channel.BUFFERED)
     private var consumerJob: Job? = null
 
@@ -59,6 +60,10 @@ class RunningService : Service() {
     private var lastWindowEpoch: Double? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+    override fun onCreate() {
+        super.onCreate()
+        recordSession = RecordSession(applicationContext, serviceScope)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         serviceScope.launch {
@@ -81,13 +86,24 @@ class RunningService : Service() {
                         stopSelf() // optional
                     }
                 }
+                Actions.RECORD_START.toString() -> {
+                    val label = intent.getStringExtra("label")  // μπορεί να είναι null
+                    recordSession.start(label = label, recordFirstNWindows = 2)
+                    Log.i("RUN-SVC", "RECORD_START label=$label session=${recordSession.sessionId()}")
+                }
 
+                Actions.RECORD_STOP.toString() -> {
+                    recordSession.stop()
+                    Log.i("RUN-SVC", "RECORD_STOP")
+                }
                 else -> {
 
                     if (started.compareAndSet(false, true)) startInternal()
                 }
+
             }
         }
+
         return START_STICKY
     }
 
@@ -101,9 +117,9 @@ class RunningService : Service() {
             .setContentText("Collecting data…")
             .setOngoing(true)
             .build()
-        Log.e("Clock", "About to start service...")
+       // Log.e("Clock", "About to start service...")
         startForeground(1, notif)
-        Log.e("Clock", "Started...")
+       // Log.e("Clock", "Started...")
         //Oboe implementation
         val ar = Bridge.startAudio()
         Log.d("RUN-SVC", "startAudio() -> $ar")
@@ -196,8 +212,6 @@ class RunningService : Service() {
         }
 
         // Everything below is outside the mutex
-
-
         if (nUnix <= 1) return
         if (nUnix > outT.size || nUnix > outX.size || nUnix > outY.size || nUnix > outZ.size) {
             Log.e("WIN-ERR", "OVERFLOW nUnix=$nUnix cap=${outT.size}")
@@ -212,48 +226,60 @@ class RunningService : Service() {
             return
         }
 
-
         val spanSec = outT[nUnix - 1] - outT[0]
         val fsWin = if (spanSec > 0.0) (nUnix - 1) / spanSec else 0.0
-
 
         val nowEpoch = outT[nUnix - 1]
         val emitDtSec = lastWindowEpoch?.let { nowEpoch - it } ?: 0.0
         lastWindowEpoch = nowEpoch
-
-
         windows++
-
-
         Log.e(
             "SW",
             "win#$windows nUnix=$nUnix spanSec=${"%.3f".format(spanSec)} fsWin=${"%.2f".format(fsWin)} estFs=${"%.2f".format(fsEst)} emitDt=${"%.2f".format(emitDtSec)}s dropped=$droppedSamples"
         )
-
-
         if (nRel > 0) {
             Log.d("SW", "REL n=$nRel span≈${"%.3f".format(spanRel)}s X0=${"%.4f".format(outX[0])} XN=${"%.4f".format(outX[nRel - 1])}")
         }
-
-
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
-        Log.e("Clock", "Find Walking")
-        val cadenceHz = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
-        val isWalking = cadenceHz >= 1.2
-        Bridge.setCadenceHz(cadenceHz.toFloat())
+      //  Log.e("Clock", "Find Walking")
+        val detailed = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
+        if (detailed.isEmpty()) return
+
+        val cadenceHzMean = detailed[0]
+        val cadencesPerSec =
+            if (detailed.size > 1) detailed.copyOfRange(1, detailed.size)
+            else doubleArrayOf()
+
+        val isWalking = cadenceHzMean >= 1.2
+
+        Bridge.setCadenceHz(cadenceHzMean.toFloat())
+
         CadenceState.updateCadence(
-            cadenceHz = cadenceHz,
+            cadenceHz = cadenceHzMean,
             isWalking = isWalking
         )
+        if (recordSession.isEnabled()) {
+            val tCopy = outT.copyOf(nUnix)
+            val xCopy = outX.copyOf(nUnix)
+            val yCopy = outY.copyOf(nUnix)
+            val zCopy = outZ.copyOf(nUnix)
 
-
-
+            recordSession.recordWindow(
+                t = tCopy,
+                x = xCopy,
+                y = yCopy,
+                z = zCopy,
+                cadenceMeanHz = cadenceHzMean,
+                cadencePerSecHz = cadencesPerSec
+            )
+        }
 
 
     }
 
     private fun stopClean() {
+        recordSession.stop()
         running = false
         val sr = Bridge.stopAudio()
         Log.d("RUN-SVC", "stopAudio() -> $sr")
