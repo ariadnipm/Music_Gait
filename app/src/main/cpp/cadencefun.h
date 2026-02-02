@@ -653,7 +653,7 @@ inline double median_confident(
         const std::vector<double>& cad,
         int start,
         int length,
-        double minRatio = 0.30
+        double minRatio = 0.40
 ) {
     const int nAll = (int)cad.size();
     if (nAll == 0 || length <= 0) return 0.0;
@@ -675,7 +675,8 @@ inline double median_confident(
     }
 
     // threshold based on actualLen
-    if ((int)valid.size() < (int)(minRatio * actualLen)) {
+    const int need = (int)std::ceil(minRatio * actualLen);
+    if ((int)valid.size() < need) {
         return 0.0;
     }
 

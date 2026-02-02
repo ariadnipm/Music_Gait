@@ -67,22 +67,22 @@ namespace mg::audio {
 
         params.hammerNoise = 0.0f;
         params.hammerSec   = 0.008f;
-        params.detune       = 0.0015f;
+        params.detune       = 0.0f;
 
         params.h2 = 0.22f;
         params.h3 = 0.10f;
         params.transientBrightness = 0.60f;
 
         params.defaultCadenceHzWhenZero = 1.6f;
-        params.defaultMacroDbWhenZero   = -16.0f;
+        params.defaultMacroDbWhenZero   = -12.0f;
 
 
         params.cadenceMinForMacro = 1.4f;
         params.cadenceMaxForMacro = 2.3f;
 
 
-        params.macroDbMin = -18.0f;
-        params.macroDbMax = -8.0f;
+        params.macroDbMin = -14.0f;
+        params.macroDbMax = -6.0f;
 
 
         params.macroSmoothing = 0.02f;

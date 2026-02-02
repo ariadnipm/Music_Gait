@@ -23,13 +23,17 @@ class RunningService : Service() {
 
     enum class Actions { START, STOP, RECORD_START, RECORD_STOP }
 
-    @Inject lateinit var accelerometer: MeasurableSensor
-    @Inject lateinit var serviceScope: CoroutineScope
-    @Inject lateinit var window: SlidingWindow
+    @Inject
+    lateinit var accelerometer: MeasurableSensor
+    @Inject
+    lateinit var serviceScope: CoroutineScope
+    @Inject
+    lateinit var window: SlidingWindow
 
     data class Sample(val tMonoMs: Long, val x: Float, val y: Float, val z: Float)
-    private lateinit var recordSession: RecordSession
 
+   // private lateinit var recordSession: RecordSession
+   // private lateinit var musicRecorder: MusicRecorder
     // Channel pipeline
     private val sampleCh = Channel<Sample>(capacity = Channel.BUFFERED)
     private var consumerJob: Job? = null
@@ -38,14 +42,14 @@ class RunningService : Service() {
     private val treal = DoubleArray(8192)
 
     private val tunixA = DoubleArray(8192)
-    private val XA     = DoubleArray(8192)
-    private val YA     = DoubleArray(8192)
-    private val ZA     = DoubleArray(8192)
+    private val XA = DoubleArray(8192)
+    private val YA = DoubleArray(8192)
+    private val ZA = DoubleArray(8192)
 
     private val tunixB = DoubleArray(8192)
-    private val XB     = DoubleArray(8192)
-    private val YB     = DoubleArray(8192)
-    private val ZB     = DoubleArray(8192)
+    private val XB = DoubleArray(8192)
+    private val YB = DoubleArray(8192)
+    private val ZB = DoubleArray(8192)
 
     //State
     private val mutex = Mutex()
@@ -60,10 +64,12 @@ class RunningService : Service() {
     private var lastWindowEpoch: Double? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onCreate() {
+   /*override fun onCreate() {
         super.onCreate()
         recordSession = RecordSession(applicationContext, serviceScope)
-    }
+        musicRecorder = MusicRecorder(applicationContext, serviceScope)
+    } */
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         serviceScope.launch {
@@ -86,16 +92,24 @@ class RunningService : Service() {
                         stopSelf() // optional
                     }
                 }
-                Actions.RECORD_START.toString() -> {
-                    val label = intent.getStringExtra("label")  // μπορεί να είναι null
+
+              /*  Actions.RECORD_START.toString() -> {
+                    val label = intent.getStringExtra("label")
                     recordSession.start(label = label, recordFirstNWindows = 2)
-                    Log.i("RUN-SVC", "RECORD_START label=$label session=${recordSession.sessionId()}")
+                    val sid = recordSession.sessionId()!!
+                    musicRecorder.start(sid)
+                    Log.i(
+                        "RUN-SVC",
+                        "RECORD_START label=$label session=${recordSession.sessionId()}"
+                    )
                 }
 
                 Actions.RECORD_STOP.toString() -> {
                     recordSession.stop()
+                    musicRecorder.stop()
                     Log.i("RUN-SVC", "RECORD_STOP")
-                }
+                } */
+
                 else -> {
 
                     if (started.compareAndSet(false, true)) startInternal()
@@ -117,9 +131,9 @@ class RunningService : Service() {
             .setContentText("Collecting data…")
             .setOngoing(true)
             .build()
-       // Log.e("Clock", "About to start service...")
+        // Log.e("Clock", "About to start service...")
         startForeground(1, notif)
-       // Log.e("Clock", "Started...")
+        // Log.e("Clock", "Started...")
         //Oboe implementation
         val ar = Bridge.startAudio()
         Log.d("RUN-SVC", "startAudio() -> $ar")
@@ -149,10 +163,11 @@ class RunningService : Service() {
         consumerJob?.cancel()
         consumerJob = serviceScope.launch {
             for (s in sampleCh) {
-               try{ processSample(s)
-            }
-               catch (t: Throwable) {
-                   Log.e("RUN-SVC", "processSample crashed; keep running", t)}
+                try {
+                    processSample(s)
+                } catch (t: Throwable) {
+                    Log.e("RUN-SVC", "processSample crashed; keep running", t)
+                }
             }
         }
 
@@ -195,8 +210,8 @@ class RunningService : Service() {
             )
             if (nRel > 0) {
                 tStartRel = treal[0]
-                tEndRel   = treal[nRel - 1]
-                spanRel   = tEndRel - tStartRel
+                tEndRel = treal[nRel - 1]
+                spanRel = tEndRel - tStartRel
             }
 
             nUnix = window.copyWindowIntoUnixSec(
@@ -235,14 +250,23 @@ class RunningService : Service() {
         windows++
         Log.e(
             "SW",
-            "win#$windows nUnix=$nUnix spanSec=${"%.3f".format(spanSec)} fsWin=${"%.2f".format(fsWin)} estFs=${"%.2f".format(fsEst)} emitDt=${"%.2f".format(emitDtSec)}s dropped=$droppedSamples"
+            "win#$windows nUnix=$nUnix spanSec=${"%.3f".format(spanSec)} fsWin=${"%.2f".format(fsWin)} estFs=${
+                "%.2f".format(
+                    fsEst
+                )
+            } emitDt=${"%.2f".format(emitDtSec)}s dropped=$droppedSamples"
         )
         if (nRel > 0) {
-            Log.d("SW", "REL n=$nRel span≈${"%.3f".format(spanRel)}s X0=${"%.4f".format(outX[0])} XN=${"%.4f".format(outX[nRel - 1])}")
+            Log.d(
+                "SW",
+                "REL n=$nRel span≈${"%.3f".format(spanRel)}s X0=${"%.4f".format(outX[0])} XN=${
+                    "%.4f".format(outX[nRel - 1])
+                }"
+            )
         }
         Log.d("SW", "UNIX first=${"%.3f".format(outT[0])} last=${"%.3f".format(outT[nUnix - 1])}")
 
-      //  Log.e("Clock", "Find Walking")
+        //  Log.e("Clock", "Find Walking")
         val detailed = Bridge.findWalking(outT, outX, outY, outZ, nUnix)
         if (detailed.isEmpty()) return
 
@@ -259,7 +283,7 @@ class RunningService : Service() {
             cadenceHz = cadenceHzMean,
             isWalking = isWalking
         )
-        if (recordSession.isEnabled()) {
+       /* if (recordSession.isEnabled()) {
             val tCopy = outT.copyOf(nUnix)
             val xCopy = outX.copyOf(nUnix)
             val yCopy = outY.copyOf(nUnix)
@@ -273,18 +297,34 @@ class RunningService : Service() {
                 cadenceMeanHz = cadenceHzMean,
                 cadencePerSecHz = cadencesPerSec
             )
+
+        if (musicRecorder.isEnabled()) {
+            val tempoBpm = cadenceToTempoBpm(cadenceHzMean)
+            val macroDbTarget = cadenceToMacroDbTarget(cadenceHzMean)
+            val macroAmpTarget = dbToAmp(macroDbTarget)
+
+            musicRecorder.recordMusic(
+                win = windows-1,
+                cadenceMeanHz = cadenceHzMean,
+                tempoBpm = tempoBpm,
+                macroDbTarget = macroDbTarget,
+                macroAmpTarget = macroAmpTarget
+            )
         }
-
-
+    } */
     }
 
     private fun stopClean() {
-        recordSession.stop()
+       // recordSession.stop()
+       // musicRecorder.stop()
         running = false
         val sr = Bridge.stopAudio()
         Log.d("RUN-SVC", "stopAudio() -> $sr")
 
-        try { accelerometer.stopListening() } catch (_: Throwable) {}
+        try {
+            accelerometer.stopListening()
+        } catch (_: Throwable) {
+        }
 
         consumerJob?.cancel()
         consumerJob = null
@@ -308,10 +348,53 @@ class RunningService : Service() {
     }
 
     override fun onDestroy() {
-        try { accelerometer.stopListening() } catch (_: Throwable) {}
-        try { consumerJob?.cancel() } catch (_: Throwable) {}
-        try { sampleCh.close() } catch (_: Throwable) {}
-        try { serviceScope.cancel() } catch (_: Throwable) {}
+        try {
+            accelerometer.stopListening()
+        } catch (_: Throwable) {
+        }
+        try {
+            consumerJob?.cancel()
+        } catch (_: Throwable) {
+        }
+        try {
+            sampleCh.close()
+        } catch (_: Throwable) {
+        }
+        try {
+            serviceScope.cancel()
+        } catch (_: Throwable) {
+        }
         super.onDestroy()
     }
+    // MUSIC PARAMETER MAPPING
+
+    private  val DEFAULT_CADENCE_HZ_WHEN_ZERO = 1.6
+    private  val DEFAULT_MACRO_DB_WHEN_ZERO   = -16.0
+
+    private  val CADENCE_MIN_FOR_MACRO = 1.4
+    private  val CADENCE_MAX_FOR_MACRO = 2.3
+    private  val MACRO_DB_MIN = -18.0
+    private val MACRO_DB_MAX = -8.0
+
+    private fun cadenceToTempoBpm(cadHz: Double): Double {
+        val cadForTiming =
+            if (cadHz <= 1e-9) DEFAULT_CADENCE_HZ_WHEN_ZERO
+            else cadHz
+        return cadForTiming * 60.0
+    }
+
+    private fun cadenceToMacroDbTarget(cadHz: Double): Double {
+        if (cadHz <= 1e-9) return DEFAULT_MACRO_DB_WHEN_ZERO
+
+        val u = ((cadHz - CADENCE_MIN_FOR_MACRO) /
+                (CADENCE_MAX_FOR_MACRO - CADENCE_MIN_FOR_MACRO))
+            .coerceIn(0.0, 1.0)
+
+        return MACRO_DB_MIN + u * (MACRO_DB_MAX - MACRO_DB_MIN)
+    }
+
+    private fun dbToAmp(db: Double): Double =
+        Math.pow(10.0, db / 20.0)
+
+
 }

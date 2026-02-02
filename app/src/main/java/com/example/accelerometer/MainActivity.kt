@@ -91,11 +91,12 @@ class MainActivity : ComponentActivity() {
 
                                 CadenceState.setRunning(true)
                                 startServiceSafe()
-                                val recIntent = Intent(applicationContext, RunningService::class.java).apply {
+                              /*  val recIntent = Intent(applicationContext, RunningService::class.java).apply {
                                     action = RunningService.Actions.RECORD_START.toString()
                                     putExtra("label", "test")
                                 }
                                 startService(recIntent)
+                                */
                             },
                             modifier = Modifier
                                 .width(220.dp)
@@ -119,10 +120,10 @@ class MainActivity : ComponentActivity() {
 
                                     CadenceState.setRunning(false)
                                     stopServiceSafe()
-                                    val recStop = Intent(applicationContext, RunningService::class.java).apply {
+                                   /* val recStop = Intent(applicationContext, RunningService::class.java).apply {
                                         action = RunningService.Actions.RECORD_STOP.toString()
                                     }
-                                    startService(recStop)
+                                    startService(recStop) */
                                 },
                                 modifier = Modifier
                                     .width(220.dp)
