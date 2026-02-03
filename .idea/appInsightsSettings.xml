@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.example.accelerometer" />
+                  <option name="mobileSdkAppId" value="1:355345418651:android:35d4f716fb628f9144b93e" />
+                  <option name="projectId" value="music-gait" />
+                  <option name="projectNumber" value="355345418651" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

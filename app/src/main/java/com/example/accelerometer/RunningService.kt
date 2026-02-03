@@ -64,7 +64,7 @@ class RunningService : Service() {
     private var lastWindowEpoch: Double? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
-   /*override fun onCreate() {
+    /* override fun onCreate() {
         super.onCreate()
         recordSession = RecordSession(applicationContext, serviceScope)
         musicRecorder = MusicRecorder(applicationContext, serviceScope)
@@ -95,7 +95,7 @@ class RunningService : Service() {
 
               /*  Actions.RECORD_START.toString() -> {
                     val label = intent.getStringExtra("label")
-                    recordSession.start(label = label, recordFirstNWindows = 2)
+                    recordSession.start(label = label, recordFirstNWindows = 10)
                     val sid = recordSession.sessionId()!!
                     musicRecorder.start(sid)
                     Log.i(
@@ -283,7 +283,7 @@ class RunningService : Service() {
             cadenceHz = cadenceHzMean,
             isWalking = isWalking
         )
-       /* if (recordSession.isEnabled()) {
+      /*  if (recordSession.isEnabled()) {
             val tCopy = outT.copyOf(nUnix)
             val xCopy = outX.copyOf(nUnix)
             val yCopy = outY.copyOf(nUnix)
@@ -315,7 +315,7 @@ class RunningService : Service() {
     }
 
     private fun stopClean() {
-       // recordSession.stop()
+      //  recordSession.stop()
        // musicRecorder.stop()
         running = false
         val sr = Bridge.stopAudio()

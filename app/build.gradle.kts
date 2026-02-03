@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt)
-
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -83,4 +83,6 @@ dependencies {
     implementation("com.google.oboe:oboe:1.10.0")
     implementation(libs.material.icons.extended)
     implementation("com.google.code.gson:gson:2.13.2")
+    implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
+    implementation("com.google.firebase:firebase-analytics")
 }
