@@ -100,10 +100,6 @@ class MusicRecorder(
 
     /**
      * Record 1 music decision per window:
-     * - win index (use RunningService.windows or recordSession winIndex if you prefer)
-     * - cadence mean
-     * - tempo in BPM
-     * - macro target in dB and amp (target amp = 10^(db/20))
      */
     fun recordMusic(
         win: Int,

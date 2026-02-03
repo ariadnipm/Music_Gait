@@ -52,7 +52,6 @@ class RecordSession(
 
     /** Start a new session. Creates sessions/<label__timestamp>/ and opens session.jsonl */
     fun start(label: String?, recordFirstNWindows: Int) {
-        // Κλείσε τυχόν παλιό session πλήρως
         stop()
 
         val ts = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
@@ -76,7 +75,7 @@ class RecordSession(
         val w = BufferedWriter(FileWriter(File(dir, "session.jsonl"), true))
         writer = w
 
-        // Φτιάξε queue + writer loop
+
         val ch = Channel<WindowRecord>(capacity = Channel.BUFFERED)
         writeCh = ch
 
