@@ -32,8 +32,8 @@ class RunningService : Service() {
 
     data class Sample(val tMonoMs: Long, val x: Float, val y: Float, val z: Float)
 
-   // private lateinit var recordSession: RecordSession
-   // private lateinit var musicRecorder: MusicRecorder
+   private lateinit var recordSession: RecordSession
+   private lateinit var musicRecorder: MusicRecorder
     // Channel pipeline
     private val sampleCh = Channel<Sample>(capacity = Channel.BUFFERED)
     private var consumerJob: Job? = null
@@ -64,11 +64,11 @@ class RunningService : Service() {
     private var lastWindowEpoch: Double? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
-    /* override fun onCreate() {
+     override fun onCreate() {
         super.onCreate()
         recordSession = RecordSession(applicationContext, serviceScope)
         musicRecorder = MusicRecorder(applicationContext, serviceScope)
-    } */
+    }
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -93,9 +93,9 @@ class RunningService : Service() {
                     }
                 }
 
-              /*  Actions.RECORD_START.toString() -> {
+               Actions.RECORD_START.toString() -> {
                     val label = intent.getStringExtra("label")
-                    recordSession.start(label = label, recordFirstNWindows = 10)
+                    recordSession.start(label = label, recordFirstNWindows = 8)
                     val sid = recordSession.sessionId()!!
                     musicRecorder.start(sid)
                     Log.i(
@@ -108,7 +108,7 @@ class RunningService : Service() {
                     recordSession.stop()
                     musicRecorder.stop()
                     Log.i("RUN-SVC", "RECORD_STOP")
-                } */
+                }
 
                 else -> {
 
@@ -283,7 +283,7 @@ class RunningService : Service() {
             cadenceHz = cadenceHzMean,
             isWalking = isWalking
         )
-      /*  if (recordSession.isEnabled()) {
+        if (recordSession.isEnabled()) {
             val tCopy = outT.copyOf(nUnix)
             val xCopy = outX.copyOf(nUnix)
             val yCopy = outY.copyOf(nUnix)
@@ -311,12 +311,12 @@ class RunningService : Service() {
                 macroAmpTarget = macroAmpTarget
             )
         }
-    } */
+    }
     }
 
     private fun stopClean() {
-      //  recordSession.stop()
-       // musicRecorder.stop()
+        recordSession.stop()
+        musicRecorder.stop()
         running = false
         val sr = Bridge.stopAudio()
         Log.d("RUN-SVC", "stopAudio() -> $sr")
@@ -369,12 +369,12 @@ class RunningService : Service() {
     // MUSIC PARAMETER MAPPING
 
     private  val DEFAULT_CADENCE_HZ_WHEN_ZERO = 1.6
-    private  val DEFAULT_MACRO_DB_WHEN_ZERO   = -16.0
+    private  val DEFAULT_MACRO_DB_WHEN_ZERO   = -12.0
 
     private  val CADENCE_MIN_FOR_MACRO = 1.4
     private  val CADENCE_MAX_FOR_MACRO = 2.3
-    private  val MACRO_DB_MIN = -18.0
-    private val MACRO_DB_MAX = -8.0
+    private  val MACRO_DB_MIN = -14.0
+    private val MACRO_DB_MAX = -6.0
 
     private fun cadenceToTempoBpm(cadHz: Double): Double {
         val cadForTiming =
