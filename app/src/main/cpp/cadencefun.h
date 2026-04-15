@@ -649,69 +649,38 @@ std::vector<double> find_walking(
 }
 
 
-inline double median_confident(
-        const std::vector<double>& cad,
-        int start,
-        int length,
-        double minRatio = 0.40
-) {
-    const int nAll = (int)cad.size();
-    if (nAll == 0 || length <= 0) return 0.0;
-
-    // clamp start
-    if (start < 0) start = 0;
-    if (start >= nAll) return 0.0;
-
-    const int end = std::min(nAll, start + length);
-    const int actualLen = end - start;
-    if (actualLen <= 0) return 0.0;
-
-    std::vector<double> valid;
-    valid.reserve((size_t)actualLen);
-
-    for (int i = start; i < end; ++i) {
-        const double f = cad[(size_t)i];
-        if (f > 0.0) valid.push_back(f);
-    }
-
-    // threshold based on actualLen
-    const int need = (int)std::ceil(minRatio * actualLen);
-    if ((int)valid.size() < need) {
-        return 0.0;
-    }
-
-    std::sort(valid.begin(), valid.end());
-    const size_t m = valid.size();
-
-    if ((m % 2) == 0) {
-        return 0.5 * (valid[m/2 - 1] + valid[m/2]);
-    } else {
-        return valid[m/2];
-    }
-}
-
-
 inline double aggregate_window_cadence(
         const std::vector<double>& cad,
-        int shortLen   // (π.χ. 15)
+        int shortLen,
+        double minRatio = 0.60
 ) {
-
     const int n = (int)cad.size();
     if (n <= 0) return 0.0;
 
-    // first (warm-up) window
-    if (shortLen <= 0 || n <= shortLen) {
-        return median_confident(cad, 0, n);
+    // start from the second half
+    const int start = std::max(0, n - shortLen);
+    const int actualLen = n - start;
+    if (actualLen <= 0) return 0.0;
+
+    // collect valid (non-zero) values
+    std::vector<double> valid;
+    valid.reserve((size_t)actualLen);
+    for (int i = start; i < n; ++i) {
+        if (cad[(size_t)i] > 0.0)
+            valid.push_back(cad[(size_t)i]);
     }
 
-    const double cadfull  = median_confident(cad, 0, n);
-    const int startshort  = std::max(0, n - shortLen);
-    const double cadshort = median_confident(cad, startshort, shortLen);
+    // need at least 60% valid
+    const int need = (int)std::ceil(minRatio * actualLen);
+    if ((int)valid.size() < need) return 0.0;
 
-
-    if (cadshort == 0.0) return 0.0;
-    if (cadfull==0.0) return cadshort;
-    return 0.7 * cadshort + 0.3 * cadfull;
+    // median
+    std::sort(valid.begin(), valid.end());
+    const size_t m = valid.size();
+    if ((m % 2) == 0)
+        return 0.5 * (valid[m/2 - 1] + valid[m/2]);
+    else
+        return valid[m/2];
 }
 
 

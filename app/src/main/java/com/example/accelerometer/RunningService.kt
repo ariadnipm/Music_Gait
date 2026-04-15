@@ -32,8 +32,8 @@ class RunningService : Service() {
 
     data class Sample(val tMonoMs: Long, val x: Float, val y: Float, val z: Float)
 
-   private lateinit var recordSession: RecordSession
-   private lateinit var musicRecorder: MusicRecorder
+    //private lateinit var recordSession: RecordSession
+    //private lateinit var musicRecorder: MusicRecorder
     // Channel pipeline
     private val sampleCh = Channel<Sample>(capacity = Channel.BUFFERED)
     private var consumerJob: Job? = null
@@ -66,8 +66,8 @@ class RunningService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
      override fun onCreate() {
         super.onCreate()
-        recordSession = RecordSession(applicationContext, serviceScope)
-        musicRecorder = MusicRecorder(applicationContext, serviceScope)
+      //  recordSession = RecordSession(applicationContext, serviceScope)
+      //  musicRecorder = MusicRecorder(applicationContext, serviceScope)
     }
 
 
@@ -93,7 +93,7 @@ class RunningService : Service() {
                     }
                 }
 
-               Actions.RECORD_START.toString() -> {
+           /*   Actions.RECORD_START.toString() -> {
                     val label = intent.getStringExtra("label")
                     recordSession.start(label = label, recordFirstNWindows = 8)
                     val sid = recordSession.sessionId()!!
@@ -108,7 +108,7 @@ class RunningService : Service() {
                     recordSession.stop()
                     musicRecorder.stop()
                     Log.i("RUN-SVC", "RECORD_STOP")
-                }
+                } */
 
                 else -> {
 
@@ -283,7 +283,7 @@ class RunningService : Service() {
             cadenceHz = cadenceHzMean,
             isWalking = isWalking
         )
-        if (recordSession.isEnabled()) {
+       /* if (recordSession.isEnabled()) {
             val tCopy = outT.copyOf(nUnix)
             val xCopy = outX.copyOf(nUnix)
             val yCopy = outY.copyOf(nUnix)
@@ -311,12 +311,12 @@ class RunningService : Service() {
                 macroAmpTarget = macroAmpTarget
             )
         }
-    }
+    } */
     }
 
     private fun stopClean() {
-        recordSession.stop()
-        musicRecorder.stop()
+       // recordSession.stop()
+       // musicRecorder.stop()
         running = false
         val sr = Bridge.stopAudio()
         Log.d("RUN-SVC", "stopAudio() -> $sr")
